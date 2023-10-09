@@ -1,11 +1,3 @@
-#check on the use of masks
-# # masks used are:
-# 1. full mask
-# 2. pica-region
-# 3. hostpot-regions
-# 4. lobe-regions
-# 5. 
-
 set -e
 
 welcome(){
@@ -104,7 +96,8 @@ selectGoodChannels(){
     if [[ ! -f selected-channels.txt ]]
     then
     	echo -e "\n############################################################"
-        echo "Autoselect some valid channels. Should be stored in a file called selected-channels"
+        echo -e """Autoselect some valid channels. Should be stored in a file 
+                \r called selected-channels"""
         echo -e "############################################################\n"
         sc-beam-plot --output ./ --prefix 00 --threshold 0.5 --auto-select ../
     fi
@@ -126,7 +119,8 @@ selectGoodChannels(){
     if [[ ! -f frequencies.txt ]]
     then
         echo -e "\n############################################################"
-        echo "write out the selected freqs into a single file for easier work. This is for use in the RM synth for wavelength":
+        echo -e """write out the selected freqs into a single file for easier work. 
+            \r This is for use in the RM synth for wavelength"""
         echo -e "############################################################\n"
         for im in $imgs/*-I-image.fits
             do
@@ -136,7 +130,8 @@ selectGoodChannels(){
 
 
         echo -e "\n############################################################"
-        echo "Cleanup freqs file by replacing CRVAL3 = and all spaces after it with emptiness"
+        echo -e """Cleanup freqs file by replacing CRVAL3 = and all spaces after it 
+                \r with emptiness"""
         echo -e "############################################################\n"
         sed -i "s/CRVAL3  =\ \+//g" frequencies.txt
     fi
@@ -145,7 +140,7 @@ selectGoodChannels(){
     
     # 4. save the names of the selected images in a file
     echo -e "\n############################################################"
-    echo "Save the names of the selected images. Simpleton workaround for using cubes in the scap.py script :("
+    echo -e """Save the names of the selected images"""
     echo -e "############################################################\n"
     ls $imgs/*-[0-9][0-9][0-9][0-9]*-image.fits > selected-freq-images.txt
 
@@ -207,7 +202,8 @@ selectedChannels_CubeConvolve(){
     echo -e "############################################################\n"
     for s in $stokes
         do        
-            spimple-imconv -image $sel_cubes/${s,,}-image-cube.fits -o $conv_cubes/${s,,}-conv-image-cube -pp ${beam_dims[@]}
+            spimple-imconv -image $sel_cubes/${s,,}-image-cube.fits \
+                -o $conv_cubes/${s,,}-conv-image-cube -pp ${beam_dims[@]}
         done
 
 
@@ -233,7 +229,8 @@ selectedChannels_SinglesConvolve(){
     if [[ ! -f beam-dims.txt ]]
     then
         # read beam dimensions of the first available channel
-        fitsheader $imgs/$(ls -v relevant-images/ | head -1) | grep -i "bmaj \|bmin \|bpa " > beam-dims.txt
+        fitsheader $imgs/$(ls -v relevant-images/ | head -1) \
+        |   grep -i "bmaj \|bmin \|bpa " > beam-dims.txt
         sed -i "s/.*=\s*//g" beam-dims.txt
 
     fi
@@ -323,6 +320,7 @@ generateSpiMap(){
     # # well I can :) and store in this variable
     wsums=$(python -c "import numpy as np; wsums = np.loadtxt('wsums.txt'); wsums = np.round(wsums/wsums.max(), 4); print(*wsums)")
 
+
     mapfile -t freqs < frequencies.txt
 
     # cw - channel weights, th-rms threshold factor, 
@@ -354,8 +352,8 @@ generateRmMap(){
 
     echo -e "\n############################################################"
     echo "Do some RM maps, fpol maps and other maps for each pixel"
-    echo "Using my mask here, Don't know where yours is but if this step \
-        fails, check on that"
+    echo -e """Using my mask here, Don't know where yours is but if this step
+        \r fails, check on that"""
     echo "Default maximum depth and number of iterations same as that of previous"
     echo -e "############################################################\n"
     sc-rmmap $(echo $args)
@@ -431,10 +429,10 @@ runScrappy(){
 
 
     echo -e "\n############################################################"
-    echo "Perfrom RM synthesis for various lines of sight generated from \
-        previous step and plot the output"
-    echo "For pictor I set the maximum depth to 400, depth step 1 looks \
-        smoothest, niter from 500-1000 looks similar"
+    echo -e """Perfrom RM synthesis for various lines of sight generated from \
+        \r previous step and plot the output"""
+    echo -e """For pictor I set the maximum depth to 400, depth step 1 looks \
+        \r smoothest, niter from 500-1000 looks similar"""
     echo -e "############################################################\n"
     sc-losrm -id $scout/los-data \
         -od $scout/los-rm-data -md 400 --depth-step 1

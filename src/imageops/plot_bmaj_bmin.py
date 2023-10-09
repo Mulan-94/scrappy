@@ -22,9 +22,6 @@ def read_fits(imname):
     outs = {}
     hdr = fits.getheader(imname)
     for _ in "BMAJ BMIN BPA CRVAL3".split():
-        if "C" in _:
-            outs[_] = hdr[_] / 1e9
-        else:    
             outs[_] = hdr[_]
     snitch.info(f"Reading         :{imname}")
     return outs
@@ -233,6 +230,7 @@ def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz",
     
     ONAME = os.path.join(dump, "frequencies.txt")
     snitch.info(f"Saving selected freqs : {ONAME}")
+
     np.savetxt(ONAME, freqs[sel])
 
     # chans = np.arange(bma.size)
