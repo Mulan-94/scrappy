@@ -292,10 +292,18 @@ generateSpiMap(){
     fi
 
     types=("residual" "model")
+    mapfile -t sel < selected-channels.txt; export sel;
+
     for im in ${types[@]}
-        do  
-            images=$(ls -v ../*-[0-9][0-9][0-9][0-9]-I-$im.fits)
-            fitstool.py --stack=$sel_cubes/i-$im-cube.fits:FREQ $(echo $images)
+        do
+        echo "Copying selected channels' residuls and models for stacking"
+        for chan in ${sel[@]}
+            do  
+                cp  ../*-$chan-I-$im.fits $imgs
+            done
+
+        images=$(ls -v $imgs/*-I-$im.fits)
+        fitstool.py --stack=$sel_cubes/i-$im-cube.fits:FREQ $(echo $images)
         done
 
 
@@ -327,6 +335,7 @@ generateSpiMap(){
 
     return 0
 }
+
 
 
 
