@@ -31,18 +31,21 @@ with polarvis: https://github.com/Mulan-94/polarvis\n""" +
 " ".join([f'{_.strip()} -h\n' for _ in get_console_scripts()]) + "\033[0m"
         )
 
-    parser.add_argument("-i", "--initialize", action="store_true", dest="initialize",
+    parser.add_argument("-i", "--initialize", arction="store_true", dest="initialize",
     help="Set up files required to run the showrunner. It will not run without those files")
     return parser
 
 
 def initialize():
-    op_dir = os.path.join(os.path.dirname(__file__),  "..", "post")
+    op_dir = os.path.join(os.path.dirname(__file__),  "..", "posta")
     work_dir = os.path.abspath(os.path.curdir)
 
     for f in ["showrunner.sh", "env-vars", "bk_plots.yml"]:
-        print(f"Copying:\n\t{os.path.join(op_dir, f)} \nto:\tthe {work_dir}")
-        os.symlink(os.path.join(op_dir, f), os.path.join(work_dir, f))
+        if not os.path.exists(os.path.join(op_dir, f)):
+            print(f"Copying:\n\t{os.path.join(op_dir, f)} \nto:\tthe {work_dir}")
+            os.symlink(os.path.join(op_dir, f), os.path.join(work_dir, f))
+        else:
+            print(f"{f} already exists, skipping")
 
 def console():
     opts = parser().parse_args()

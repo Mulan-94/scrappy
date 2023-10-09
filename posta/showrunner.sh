@@ -37,10 +37,23 @@ welcome(){
 }
 
 installRequiredSoftware(){
-    pip install spimple \
-        Owlcat \
-        # spimple
-    pip install -e ~/git_repos/misc_scripts_n_tools/qu_pol/scrappy/
+    pip install -U pip
+    pkgs=("spimple" "Owlcat")
+
+    echo -e "\n############################################################"
+    echo "Installing required packages if need be"
+    echo -e "\n############################################################"
+
+    for pkg in ${pkgs[@]}
+        do 
+            if ! pip list --local | grep -i "$pkg";
+            then
+                echo "Package $pkg was not found, installing it."
+                pip install $pkg
+            else
+                echo "$pkg already installed. Skipping it."
+            fi
+        done
     return 0
 }
 

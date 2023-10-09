@@ -7,7 +7,7 @@ At its tail end, it generates plots to be used with PolarVis:
 
     https://github.com/Mulan-94/polarvis
 
-It consists of a pipeline script `showrunner.sh` which perfroms multiple steps to
+It consists of a pipeline script `showrunner.sh <./post/showrunner.sh>`_ which perfroms multiple steps to
 achieve this end goal. This is a bash script that can be modified to suit ones needs
 
 To avail the scripts required for ``showrunner.sh``, initialise those files
@@ -16,7 +16,7 @@ To avail the scripts required for ``showrunner.sh``, initialise those files
 
     scrappy -i
 
-When ready, the pipeline ``showrunner.sh`` is run as:
+When ready, the pipeline `showrunner.sh <./post/showrunner.sh>`_ is run as:
 
 .. code-block:: bash
 
