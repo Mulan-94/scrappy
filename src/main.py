@@ -31,7 +31,7 @@ with polarvis: https://github.com/Mulan-94/polarvis\n""" +
 " ".join([f'{_.strip()} -h\n' for _ in get_console_scripts()]) + "\033[0m"
         )
 
-    parser.add_argument("-i", "--initialize", arction="store_true", dest="initialize",
+    parser.add_argument("-i", "--initialize", action="store_true", dest="initialize",
     help="Set up files required to run the showrunner. It will not run without those files")
     return parser
 
@@ -39,13 +39,13 @@ with polarvis: https://github.com/Mulan-94/polarvis\n""" +
 def initialize():
     op_dir = os.path.join(os.path.dirname(__file__),  "..", "posta")
     work_dir = os.path.abspath(os.path.curdir)
-
-    for f in ["showrunner.sh", "env-vars", "bk_plots.yml"]:
-        if not os.path.exists(os.path.join(op_dir, f)):
-            print(f"Copying:\n\t{os.path.join(op_dir, f)} \nto:\tthe {work_dir}")
-            os.symlink(os.path.join(op_dir, f), os.path.join(work_dir, f))
+    print("\n")
+    for fil in ["showrunner.sh", "env-vars", "bk_plots.yml"]:
+        if not os.path.exists(os.path.join(work_dir, fil)):
+            print(f"{fil:20} : not found. Copying to {work_dir}")
+            os.symlink(os.path.join(op_dir, fil), os.path.join(work_dir, fil))
         else:
-            print(f"{f} already exists, skipping")
+            print(f"{fil:20} : already exists, skipping")
 
 def console():
     opts = parser().parse_args()
@@ -54,9 +54,6 @@ def console():
     
     return
 
-
-def pox():
-    print(os.path.join(os.path.dirname(__name__)))
 
 if __name__ == "__main__":
     console()
