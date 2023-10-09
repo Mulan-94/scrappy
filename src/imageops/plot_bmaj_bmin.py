@@ -21,7 +21,7 @@ snitch.setLevel("INFO")
 def read_fits(imname):
     outs = {}
     hdr = fits.getheader(imname)
-    for _ in "BMAJ BMIN CRVAL3".split():
+    for _ in "BMAJ BMIN BPA CRVAL3".split():
         if "C" in _:
             outs[_] = hdr[_] / 1e9
         else:    
@@ -42,9 +42,11 @@ def read_cube_fits(imname, channels=None):
         else:
             channels = range(1, hdul[0].header["NAXIS3"]+1)
         for freq_id in channels:
-            outs.append(
-                (hdul[0].header[f"BMAJ{freq_id}"], hdul[0].header[f"BMIN{freq_id}"],
-                                freq_id))
+            outs.append((
+                hdul[0].header[f"BMAJ{freq_id}"],
+                hdul[0].header[f"BMIN{freq_id}"],
+                hdul[0].header[f"BPA{freq_id}"],
+                freq_id))
     return outs
 
 
@@ -92,8 +94,9 @@ def get_params(pairs):
     snitch.info("Populating beam parameters for all images")
     bmajs = np.array([_["BMAJ"] for _ in pairs])
     bmins = np.array([_["BMIN"] for _ in pairs])
+    bpas = np.array([_["BPA"] for _ in pairs])
     freqs = np.array([_["CRVAL3"] for _ in pairs])
-    return bmajs, bmins, freqs
+    return bmajs, bmins, bpas, freqs
 
 
 
@@ -109,11 +112,12 @@ def get_and_plot_beam_info(indir=None, search="*[0-9]-I-image.fits", dump=".",
     data = natsorted(glob(os.path.join(indir, search)))
 
     pairs = [read_fits(dat) for dat in data]
-    bmajs, bmins, freqs = get_params(pairs)
+    bmajs, bmins, bpas, freqs = get_params(pairs)
 
 
     # save this beam information into beams file
-    np.savez(os.path.join(dump, "beams"), freqs=freqs, bmajs=bmajs, bmins=bmins)
+    np.savez(os.path.join(dump, "beams"), bpas=bpas, bmajs=bmajs, bmins=bmins,
+        freqs=freqs)
 
     oname = os.path.join(dump, oname if prefix is None else f"{prefix}-{oname}")
     plotme(freqs, bmajs, bmins, oname, title="All freqs")
@@ -124,7 +128,7 @@ def get_and_plot_beam_info(indir=None, search="*[0-9]-I-image.fits", dump=".",
 # def single_cube_file(cube_name, oname=None, channels=None):
 #     ## in the case of multiple data cubes
 #     pairs = read_cube_fits(cube_name, channels=channels)
-#     bmajs, bmins, freqs = get_params(pairs)
+#     bmajs, bmins, bpas, freqs = get_params(pairs)
 #     if oname is None:
 #         oname = f"bmaj-bmin-vs-freq-{cube_name}.png"
 #     plotme(freqs, bmajs, bmins, oname, title="All freqs")
@@ -201,8 +205,8 @@ def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
     return sel, not_sel
 
 
-def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz", threshold=0.5, 
-    sel=None, autoselect=True):
+def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz",
+    threshold=0.5, sel=None, autoselect=True):
     """
     folder: str
         Where the input images are
@@ -216,14 +220,14 @@ def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz", t
     chans = [f"{_}".zfill(4) for _ in sel]
     
     bm = dict(np.load(os.path.join(dump, beam_file)))
-    bma, bmi, freqs = bm["bmajs"], bm["bmins"], bm["freqs"]
+    bma, bmi, bpa, freqs = bm["bmajs"], bm["bmins"], bm["bpas"], bm["freqs"]
 
     # write the largest beam available
     ONAME = os.path.join(dump, "beam-dims.txt")
     with open(ONAME, "w") as file:
         file.write(f"{bma[sel[0]]}\n")
         file.write(f"{bmi[sel[0]]}\n")
-        file.write(f"{freqs[sel[0]]}\n")
+        file.write(f"{bpa[sel[0]]}\n")
 
 
     

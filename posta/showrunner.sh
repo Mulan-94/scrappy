@@ -118,7 +118,7 @@ selectGoodChannels(){
     echo -e "############################################################\n"
     for n in ${sel[@]}
     	do
-    		cp ../*-$n-{I,Q,U}-*image* $imgs
+    		cp ../*-$n-{I,Q,U}-image.fits $imgs
     	done
 
     
@@ -128,7 +128,7 @@ selectGoodChannels(){
         echo -e "\n############################################################"
         echo "write out the selected freqs into a single file for easier work. This is for use in the RM synth for wavelength":
         echo -e "############################################################\n"
-        for im in $imgs/*-[0-9][0-9][0-9][0-9]*-I-image.fits
+        for im in $imgs/*-I-image.fits
             do
                 # ensure that this is being appended Lexy !!!!!!
                 fitsheader -k CRVAL3 $im |  grep -i CRVAL3 >> frequencies.txt
@@ -190,7 +190,7 @@ selectedChannels_Stack(){
     for s in $stokes
         do
             echo "Make the selection cubes: ${s^^}"
-            images=$(ls -v $indir/*-[0-9][0-9][0-9][0-9]-$s-image.fits)
+            images=$(ls -v $indir/*-$s-image.fits)
             fitstool.py --stack=$outdir/${s,,}-image-cube.fits:FREQ $(echo $images)
             echo "Stored at: $outdir"
         done
@@ -254,7 +254,7 @@ selectedChannels_SinglesConvolve(){
     rename.ul ".convolved.fits" "" $convim/*
 
     # stack them
-    selectedChannels_Stack $convim $sel_cubes
+    selectedChannels_Stack $convim $conv_cubes
 
 
     echo -e "\n############################################################"
