@@ -40,7 +40,7 @@ def initialize():
     op_dir = os.path.join(os.path.dirname(__file__),  "..", "post")
     work_dir = os.path.abspath(os.path.curdir)
 
-    for f in ["showrunner.sh", "env-vars"]:
+    for f in ["showrunner.sh", "env-vars", "bk_plots.yml"]:
         print(f"Copying:\n\t{os.path.join(op_dir, f)} \nto:\tthe {work_dir}")
         os.symlink(os.path.join(op_dir, f), os.path.join(work_dir, f))
 

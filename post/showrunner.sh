@@ -416,7 +416,7 @@ runScrappy(){
         echo "Generate interactive plots for the various LoS"
         echo -e "############################################################\n"
         sc-bokehplot -id $scout/los-data \
-          --yaml qu_pol/bokeh/plots.yml -od $scout/bokeh-plots
+          --yaml bk_plots.yml -od $scout/bokeh-plots
     fi
 
     return 0
@@ -433,7 +433,7 @@ main(){
 
     selectedChannels_Stack
     selectedChannels_CubeConvolve
-    # selectedChannels_SinglesConvolve
+    selectedChannels_SinglesConvolve
 
     copyMfsImages
     
@@ -461,7 +461,7 @@ main(){
 
 if [[ $1 = '-h' ]]
 then
-    welcome
+    logsave showrunner.txt welcome
 else
     # Run this main function
     main $1
