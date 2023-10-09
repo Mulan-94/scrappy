@@ -442,11 +442,16 @@ runScrappy(){
     return 0
 }
 
+requiredSetup(){
+    installRequiredSoftware
+    initialiseEnvVarsForThisScript
+
+    return 0
+}
 
 main(){
-    installRequiredSoftware
-    
-    initialiseEnvVarsForThisScript
+    requiredSetup
+
     makeDirs
     selectGoodChannels
     stackAllImages
