@@ -1,7 +1,5 @@
 ``scrappy`` is a collection of tools used to generate Faraday spectra for various 
-indpendent lines of sight across an extragalactic source. It began as a custom 
-script for Pictor A field, but is now able to support any field provided a 
-source mask is given.
+indpendent lines of sight across an extragalactic source. 
 
 At its tail end, it generates plots to be used with PolarVis:
 
@@ -41,3 +39,7 @@ All these scripts are in use within the `showrunner`. They are:
 
 Each of the scripts has a help text that is accessible via the `-h` flag. 
 Please consult that for more information on the parameters required to ran the individual scripts.
+
+This project began as a custom script for Pictor A field, but is now able to support any field provided a 
+source mask is given. Parts of the rm-synthesis tools availed in this script evolved from 
+those by Lerato Baidoo @sebokolodi and have been modified to suite our needs.
