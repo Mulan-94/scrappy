@@ -73,8 +73,14 @@ initialiseEnvVarsForThisScript(){
     if [[ -z $mask_dir ]]
     then
         export mask_dir=masks
-        mkdir -p $mask_dir
-        echo -e "Created mask directory: $mask_dir"
+
+        if [[ ! -d $mask_dir ]]
+        then
+            mkdir -p $mask_dir
+            echo -e "Created mask directory: $mask_dir"
+        else
+            echo -e "Mask directory already exists:  $mask_dir"
+        fi
     fi
 
     return 0
@@ -285,11 +291,11 @@ generateSpiMap(){
         fitsheader *I-model.fits | grep -i wsum | sed s"/WSCVWSUM=\s*//g" > wsums.txt
     fi
 
-    types=("residual", "model")
+    types=("residual" "model")
     for im in ${types[@]}
         do  
             images=$(ls -v ../*-[0-9][0-9][0-9][0-9]-I-$im.fits)
-            fitstool.py --stack=$sel_cubes/${s,,}-cube.fits:FREQ $(echo $images)
+            fitstool.py --stack=$sel_cubes/i-$im-cube.fits:FREQ $(echo $images)
         done
 
 
@@ -308,14 +314,15 @@ generateSpiMap(){
     # # Doing this with a quick python script because,
     # # well I can :) and store in this variable
     wsums=$(python -c "import numpy as np; wsums = np.loadtxt('wsums.txt'); wsums = np.round(wsums/wsums.max(), 4); print(*wsums)")
-    maparray -t freqs < frequencies.txt
+
+    mapfile -t freqs < frequencies.txt
 
     # cw - channel weights, th-rms threshold factor, 
     # acr - add conv residuals, bm -  beam model
-    spimple-spifit -model $sel_cubes/i-models.fits \
-        -residual $sel_cubes/i-residuals.fits -o $spis/spi-map -th 10 \
+    spimple-spifit -model $sel_cubes/i-model-cube.fits \
+        -residual $sel_cubes/i-residual-cube.fits -o $spis/spi-map -th 10 \
         -nthreads 32 -pb-min 0.15 -cw $wsums -acr -bm JimBeam -band l \
-        --products aeikb -cf $freqs
+        --products aeikb -cf ${freqs[@]}
 
 
     return 0
@@ -466,17 +473,19 @@ main(){
 
     runScrappy 50 3 $prods/scrap-outputs $mask_dir/true_mask.fits true
 
-    # generateSpiMap
+    generateSpiMap
 
     return 0
 }
 
 
+LOGFILE="showrunner.log"
+
 if [[ $1 = '-h' ]]
 then
-    logsave showrunner.txt welcome
+    welcome | tee $LOGFILE
 else
     # Run this main function
-    main $1
+    main | tee $LOGFILE
 
 fi

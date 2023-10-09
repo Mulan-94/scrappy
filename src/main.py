@@ -43,7 +43,7 @@ def initialize():
     for fil in ["showrunner.sh", "env-vars", "bk_plots.yml"]:
         if not os.path.exists(os.path.join(work_dir, fil)):
             print(f"{fil:20} : not found. Copying to {work_dir}")
-            os.symlink(os.path.join(op_dir, fil), os.path.join(work_dir, fil))
+            copy(os.path.join(op_dir, fil), os.path.join(work_dir, fil))
         else:
             print(f"{fil:20} : already exists, skipping")
 
