@@ -449,12 +449,66 @@ runScrappy(){
     return 0
 }
 
+
+imageXMask(){
+
+    # Multiply  some image by some mask
+    # ima: str
+    #     Name of the image
+    # mask: str
+    #     Mask name
+    # output: str
+    #     Name of the resulting output image
+
+
+    local ima=$1
+    local mask=$2
+    local output=$3
+
+    echo -e "\n############################################################"
+    echo -e "Running $FUNCNAME"
+    echo -e "############################################################\n"
+
+    #  we premultiply the mask; cubes become problematic otherwise
+    fitstool.py --prod $mask $ima -o $output
+
+    return 0;
+
+}
+
 requiredSetup(){
     installRequiredSoftware
     initialiseEnvVarsForThisScript
 
     return 0
 }
+
+
+# compositeMaskTest(){
+#     # ---------------------------------------------------------------------
+#     # creating composite mask
+#     makeMasks "
+#         $prods/initial-FPOL-at-max-lpol.fits
+#         -o $mask_dir/fp_snr_mask.fits
+#         -above 10
+#         "
+    
+#     # imageXMask(inimage, mask, outimage)
+#     imageXMask $prods/initial-FPOL-at-max-lpol.fits \
+#         $mask_dir/fp_snr_mask.fits \
+#         $prods/masked-initial-FPOL-at-max-lpol.fits
+
+#     makeMasks "
+#         $prods/masked-initial-FPOL-at-max-lpol.fits
+#         -o $mask_dir/fp_mask.fits
+#         -above 0 -below 0.85
+#         "
+#     # ---------------------------------------------------------------------
+
+#     return 0
+# }
+
+
 
 main(){
     requiredSetup
@@ -499,5 +553,4 @@ then
 else
     # Run this main function
     main | tee $LOGFILE
-
 fi

@@ -8,6 +8,12 @@ from difflib import get_close_matches
 from copy import deepcopy
 
 
+from utils.logger import logging, LOG_FORMATTER, setup_streamhandler
+snitch = logging.getLogger(__name__)
+snitch.addHandler(setup_streamhandler())
+snitch.setLevel("INFO")
+
+
 def get_pixel(fname):
     pix  = fits.getdata(fname).squeeze()[:, 2061, 2190]
     return pix
@@ -63,7 +69,7 @@ def get_clean_header(fname=None, hdr=None):
     for pref in "wsc bma bmi bpa history".upper().split():
         for key in hdr.keys():
             if (pref in key) and (key in copy_hdr):
-                # print(f"Deleting this key: {key}")
+                # snitch.info(f"Deleting this key: {key}")
                 del copy_hdr[key]
     
     return copy_hdr
@@ -79,7 +85,7 @@ def plot_mod_vs_raw(raw, model, freq, fname="mod-vs-raw.png"):
     freq: np.array
         The X-axis data (frequency)
     """
-    print("Plotting Fitted model and raw data for a single LOS")
+    snitch.info("Plotting Fitted model and raw data for a single LOS")
 
     plt.close("all")
     fig, ax= plt.subplots(figsize=(16,9))
@@ -88,10 +94,11 @@ def plot_mod_vs_raw(raw, model, freq, fname="mod-vs-raw.png"):
     ax.minorticks_on()
     fig.legend()
     fig.savefig(fname, dpi=600)
-    print(f"Saving figure to: {fname}")
+    snitch.info(f"Saving figure to: {fname}")
     return
 
 def write_fitsfile(fname, data, hdr):
+    snitch.info(f"Writing file to:      {fname}")
     fits.writeto(fname, data, header=hdr, overwrite=True)
 
 
@@ -99,6 +106,7 @@ def split_cube(fname, model_data, cube_hdr, exclude=None):
     """
     Generate single channelised images rather than a stacked cube
     """
+    snitch.info(f"Unstacking / splitting cube:       {fname}")
     clean_hdr = get_clean_header(hdr=cube_hdr)
     
     for chan in range(model_data.shape[0]):
@@ -114,7 +122,7 @@ def split_cube(fname, model_data, cube_hdr, exclude=None):
         # name the images per channel like wsclean
         oname = fname+("-" + f"{chan}".zfill(4) + ".fits")
 
-        print(f"Writing:    {oname}")
+        snitch.info(f"Writing:    {oname}")
 
         write_fitsfile(oname, model_data[chan], clean_hdr)
 
@@ -160,7 +168,7 @@ def main():
 
 
     if not os.path.isdir(odir):
-        print(f"Creating directory: {odir}")
+        snitch.info(f"Creating directory: {odir}")
         os.makedirs(odir)
 
 
@@ -198,8 +206,9 @@ def main():
         pixels = product(ys, xs)
 
     
+    snitch.info("Starting fitting")
     for ypix, xpix in pixels:
-        print(f"pixel x: {xpix}, y: {ypix}")
+        snitch.debug(f"pixel x: {xpix}, y: {ypix}")
         model, coeffs = polynomial_fit(x=freqs, y_raw=image_data[:, ypix, xpix], degree=deg)
         model_data[:, ypix, xpix] = model
 
@@ -220,7 +229,7 @@ def main():
     for _ in range(len(coeffs)):
         write_fitsfile(os.path.join(odir, f"coefficient-{_}.fits"), coeffs_data[_], hdr)
 
-    print("done")
+    snitch.info("done")
 
 def console():
     """A console run entry point for setup.cfg"""
