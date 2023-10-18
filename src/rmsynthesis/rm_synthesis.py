@@ -415,7 +415,7 @@ def main():
                 rm_and_plot(data_file, opts, plot=plot, odir=odir, plodir=plodir)
             
         else:
-            with futures.ProcessPoolExecutor(max_workers=10) as executor:
+            with futures.ProcessPoolExecutor(max_workers=16) as executor:
                 results = list(executor.map(
                     partial(rm_and_plot, opts=opts, plot=plot, odir=odir, plodir=plodir),
                     data_files

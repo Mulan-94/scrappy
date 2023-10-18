@@ -89,6 +89,10 @@ def parser():
         help="""The total intensity image used to get the noise reference.
         Defaults to a file named 'i-mfs.fits'."""
         )
+    reqopts.add_argument("-nrf", "--noise-region-file", dest="nrfile", type=str,
+        default=None, metavar=None,  required=True,
+        help="""A region file containing region to be used as the noise referrence.
+        """)
 
 
     
@@ -129,11 +133,6 @@ def parser():
         default=None, metavar="", 
         help="""An input region file. Otherwise, one will be auto-generated.
         Genereated regions will be stored here
-        """)
-    regopts.add_argument("-nrf", "--noise-region-file", dest="nrfile", type=str,
-        default=None, metavar="", 
-        help="""An input region file. Otherwise, one will be auto-generated.
-        Custom For Pictor A !
         """)
     regopts.add_argument("-rs", "--region-size", dest="reg_size", #nargs="+",
         type=int, #default=[],
