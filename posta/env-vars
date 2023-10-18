@@ -1,7 +1,8 @@
-export prods="products";
-export orig_cubes="$prods/original-cubes";
-export sel_cubes="$prods/selection-cubes";
-export conv_cubes="$prods/conv-selection-cubes";
-export spis="$prods/spi-fitting";
-export imgs="relevant-images";
-export stokes="I Q U"
+export PRODS="products";
+export IMGS="relevant-images";
+export CONV_CUBES="$PRODS/conv-selection-cubes";
+export CONVIM="$IMGS-conv";
+export ORIG_CUBES="$PRODS/original-cubes";
+export SEL_CUBES="$PRODS/selection-cubes";
+export SPIS="$PRODS/spi-fitting";
+export STOKES="I Q U"

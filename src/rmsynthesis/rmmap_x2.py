@@ -11,37 +11,20 @@ import time
 import sys
 import warnings
 
-import astropy.io.fits as pyfits
 import numpy as np
 
-from multiprocessing import Pool
+from astropy.io import fits
 from scipy import signal
 from concurrent import futures
 from functools import partial
 
-def configure_logger(out_dir):
-# ignore overflow errors, assume these to be mostly flagged data
-    warnings.simplefilter("ignore")
+from utils.rmmath import frac_polzn_error, frac_polzn, linear_polzn
 
-    formatter = logging.Formatter(
-        datefmt='%H:%M:%S %d.%m.%Y',
-        fmt="%(asctime)s : %(levelname)s - %(message)s")
-    
-    l_handler = logging.FileHandler(
-        os.path.join(out_dir, "turbo-rm-x2.log"), mode="w")
-    l_handler.setLevel(logging.INFO)
-    l_handler.setFormatter(formatter)
+from utils.logger import logging, LOG_FORMATTER, setup_streamhandler
 
-    s_handler = logging.StreamHandler()
-    s_handler.setLevel(logging.INFO)
-    s_handler.setFormatter(formatter)
-
-    logger = logging.getLogger("turbo-rm")
-    logger.setLevel(logging.INFO)
-
-    logger.addHandler(l_handler)
-    logger.addHandler(s_handler)
-    return logger
+snitch = logging.getLogger(__name__)
+snitch.addHandler(setup_streamhandler())
+snitch.setLevel("INFO")
 
 
 def faraday_to_lambda(lam2, phi_range, pol_lam2):
@@ -127,7 +110,7 @@ def read_data(image, freq=True):
                                                                               
     """ Read and return image data: ra, dec and freq only"""
     try:
-        with pyfits.open(image) as hdu:
+        with fits.open(image) as hdu:
             imagedata = hdu[0].data
             header = hdu[0].header
         imslice = np.zeros(imagedata.ndim, dtype=int).tolist()
@@ -238,7 +221,7 @@ def peak_snr(fdf, rmsf_fwhm, phi_range):
 def call_fitting(args, wavelengths=None, max_depth=500, niters=100, phi_step=1, derotate=True):
     """
     Returns
-
+    -------
     p0_map
     PA_map
     RM_map
@@ -353,6 +336,84 @@ def clean_header(hdr):
             hdr.remove(key)
     
     return hdr
+
+
+
+def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-map"):
+    """
+    Calculate the depolarization ration
+
+    Parameters
+    ----------
+    (i|q|u)data: np.ndarray
+        Data cubes containing the stokes
+    e_file: str
+        Name of the file containing errors. This is found in the file generated
+        from scrappy's 'sc-los' tool and is a numpy pickle file.
+
+    Returns
+    -------
+    Maps of depolarization ratio and its error
+
+    """
+    
+    def depolzn_err(fp_lo, fer_lo, fp_hi, fer_hi):
+        return np.sqrt(np.square(fer_lo/fp_lo) + np.square(fer_hi/fp_hi))
+
+    def read_npz(fname):
+        return dict(np.load(fname))
+
+    ihdr = fits.getheader(idata)
+    idata = fits.getdata(idata).squeeze()
+    qdata = fits.getdata(qdata).squeeze()
+    udata = fits.getdata(udata).squeeze()
+
+    sel = [0,-1]
+
+    npz = read_npz(e_file)
+    ierr, qerr, uerr = npz["I_err"][sel], npz["Q_err"][sel], npz["U_err"][sel]
+
+    idata, qdata, udata = idata[sel], qdata[sel], udata[sel]
+
+    if mask:
+        mask = fits.getdata(mask).squeeze()
+        idata = np.ma.masked_equal(idata*mask, 0).filled()
+        qdata = np.ma.masked_equal(qdata*mask, 0).filled()
+        udata = np.ma.masked_equal(udata*mask, 0).filled()
+        
+    fpol = frac_polzn(idata, qdata, udata)
+
+    
+
+    fperr_lo = frac_polzn_error(idata[0], qdata[0], udata[0], ierr[0], qerr[0], uerr[0])
+    fperr_hi = frac_polzn_error(idata[-1], qdata[-1], udata[-1], ierr[-1], qerr[-1], uerr[-1])
+
+
+    fp_lo, fp_hi = fpol[0], fpol[-1]    
+
+    depoln = fp_lo / fp_hi
+    depoln_err = depolzn_err(fp_lo, fperr_lo, fp_hi, fperr_hi)
+
+
+    depol_hdr = modify_fits_header(ihdr, ctype='depol', unit='unit')
+
+    #depolarization
+    fits.writeto(output+".fits", depoln, depol_hdr,
+        overwrite=True)
+
+    #depolarization
+    fits.writeto(output+"-err.fits", depoln_err, depol_hdr,
+        overwrite=True)
+
+    snitch.info("Depolarization maps ready")
+    return
+
+def depol_shim():
+    snitch.info("Generating depolarization maps")
+    snitch.info(f"Running: depolarisation_ratio({', '.join(sys.argv[1:])})")
+    depolarisation_ratio(*sys.argv[1:])
+    return
+
     
     
 def arg_parser():
@@ -391,9 +452,9 @@ def main():
 
     # making these global because of multiprocess non-sharing.
     # Global variables can not be modified and shared between different processes
-    global pdata, fp_data, snitch, snr
+    global pdata, fp_data, snr
 
-    snitch = configure_logger(".")
+    # snitch = configure_logger(".")
     
     snr = args.snr
     try:
@@ -409,11 +470,13 @@ def main():
 
     if args.ifits:
         idata, ihdr = read_data(args.ifits) # run I-cube
-        fp_data = (qdata/idata )+ 1j*(udata/idata)
-        fp_data = np.abs(fp_data)
-        pdata = qdata/idata + (1j*udata/idata)
+
+        # divide everything by I to reduce variations**
+        fp_data = frac_polzn(idata, qdata, udata)
+
+        pdata = linear_polzn(qdata/idata, udata/idata)
     else:
-        pdata = qdata + 1j*udata
+        pdata = linear_polzn(qdata/idata, udata/idata)
     
 
     # now save the fits
@@ -444,14 +507,12 @@ def main():
     fp_map = np.zeros([N2, N3])
     lp_map = np.zeros([N2, N3])
     snr_clean = np.zeros([N2, N3])
+    depol_map = np.zeros([N2, N3])
+    depol_err = np.zeros([N2, N3])
 
-    
-    #q_cube = np.zeros([N1, N2, N3])
-    #u_cube = np.zeros([N1, N2, N3])
 
     if args.maskfits:
         x, y = read_mask(args.maskfits)
-    
     else:
         x, y = np.indices((N2, N3))
         x = x.flatten()
@@ -487,63 +548,83 @@ def main():
         fp_map[an] = results[_][4]
         lp_map[an] = results[_][5]
         snr_clean[an] = results[_][6]
-   
     
 
     # Amplitude of the clean peak RM (intrinsic fpol)
-    pyfits.writeto(
+    fits.writeto(
         args.prefix + '-p0-peak-FDF.fits', p0_map, p0_hdr, overwrite=True)
 
     # pol angle at peak RM (polarisation angle)
-    pyfits.writeto(
+    fits.writeto(
         args.prefix + '-PA-pangle-at-peak-rm.fits', PA_map, PA_hdr,
         overwrite=True)
 
     # Depth at peak RM (Actual RM at the peak intrisic fpol)
-    pyfits.writeto(
+    fits.writeto(
         args.prefix + '-RM-depth-at-peak-rm.fits', RM_map, RM_hdr,
         overwrite=True)
 
     #frac pol at central freq
-    pyfits.writeto(
+    fits.writeto(
         args.prefix + '-FPOL-at-max-lpol.fits', fp_map, pf_hdr,
         overwrite=True)
     
      #frac pol at central freq
-    pyfits.writeto(
+    fits.writeto(
         args.prefix + '-max-LPOL.fits', lp_map, lp_hdr,
         overwrite=True)
 
     #SNR from the FDF
-    pyfits.writeto(
+    fits.writeto(
         args.prefix + '-clean-fdf-SNR.fits', snr_clean, snr_hdr,
         overwrite=True)
 
+
+    
+    
+    # depol, depol_err = depolarisation_ratio(idata, qdata, udata, e_file)
+    # depol_hdr = modify_fits_header(qhdr, ctype='depol', unit='unit')
+
+    # #depolarization
+    # fits.writeto(
+    #     args.prefix + '-depolarization.fits', depol, depol_hdr,
+    #     overwrite=True)
+
+    # #depolarization
+    # fits.writeto(
+    #     args.prefix + '-depolarization-err.fits', depol_err, depol_hdr,
+    #     overwrite=True)
+
+
     snitch.info("Donesies!")
-
-    #pyfits.writeto(args.prefix + '-qFAR.fits', q_cube, qhdr, overwrite=True)
-    #pyfits.writeto(args.prefix + '-uFAR.fits', u_cube, qhdr, overwrite=True)
-
-
+    return
+    
+    
 
 def console():
     """A console run entry point for setup.cfg"""
     main()
     snitch.info("Bye :D !")
 
-if __name__=='__main__':
 
+if __name__=='__main__':
     console()
 
 
     """
     Running
     
-    time python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits -i I-image-cubes.fits -ncore 120 -o turbo -f Frequencies-PicA-Masked.txt -mask true_mask_572.fits
+    time python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits \
+        -i I-image-cubes.fits -ncore 120 -o turbo \
+        -f Frequencies-PicA-Masked.txt -mask true_mask_572.fits
 
-    python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits -i I-image-cubes.fits -ncore 120 -o from_rick/outputs/with-NHS-data-mask -f Frequencies-PicA-Masked.txt -mask masks/nhs-mask-572.fits
+    python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits \
+        -i I-image-cubes.fits -ncore 120 -o from_rick/outputs/with-NHS-data-mask \
+        -f Frequencies-PicA-Masked.txt -mask masks/nhs-mask-572.fits
 
-    python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits -i I-image-cubes.fits -ncore 120 -o from_rick/outputs/with-ricks-data-mask -f Frequencies-PicA-Masked.txt -mask from_rick/masks/ricks-data-mask.fits
+    python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits \
+        -i I-image-cubes.fits -ncore 120 -o from_rick/outputs/with-ricks-data-mask \
+        -f Frequencies-PicA-Masked.txt -mask from_rick/masks/ricks-data-mask.fits
 
     """
     
