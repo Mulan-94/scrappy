@@ -30,7 +30,7 @@ welcome(){
 
 installRequiredSoftware(){
     pip install -U pip
-    pkgs=("spimple" "Owlcat")
+    pkgs=("spimple" "Owlcat" "MontagePy")
 
     echo -e "\n############################################################"
     echo "Installing required packages if need be"
@@ -545,7 +545,7 @@ main(){
         i-mfs.fits
         -o $mask_dir/true_mask.fits
         -above 4e-3
-        -rb $HOME/pica/reduction/experiments/emancipation/masks/important_regions/pica_region-for-mask.reg
+        -rb pica_box_region.reg
         "
 
     # pass all the arguments between the quotes to this function
@@ -556,10 +556,10 @@ main(){
         -o $PRODS/initial -mask $mask_dir/true_mask.fits -f frequencies.txt "
 
     # signature
-    # runScrappy(thresh, region_size, output_dir, mask, boke_plots?, other_args)
+    # runScrappy(thresh, region_size, output_dir, boke_plots?, other_args)
     runScrappy 50 3 $PRODS/scrap-outputs false \
         "-m $mask_dir/true_mask.fits
-        -nrf noise_region.reg 
+        -nrf pica_noise_region.reg 
         -idir $IMGS"
 
     # generateSpiMap

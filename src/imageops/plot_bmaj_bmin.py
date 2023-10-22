@@ -14,6 +14,7 @@ from natsort import natsorted
 
 
 from utils.logger import logging, LOG_FORMATTER, setup_streamhandler
+from utils.genutils import make_out_dir
 snitch = logging.getLogger(__name__)
 snitch.addHandler(setup_streamhandler())
 snitch.setLevel("INFO")
@@ -113,7 +114,8 @@ def get_and_plot_beam_info(indir=None, search="*[0-9]-I-image.fits", dump=".",
 
 
     # save this beam information into beams file
-    np.savez(os.path.join(dump, "beams"), bpas=bpas, bmajs=bmajs, bmins=bmins,
+    np.savez(os.path.join(dump, "beams" if prefix is None else f"{prefix}-beams"),
+        bpas=bpas, bmajs=bmajs, bmins=bmins,
         freqs=freqs)
 
     oname = os.path.join(dump, oname if prefix is None else f"{prefix}-{oname}")
@@ -163,13 +165,13 @@ def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
     
     if autoselect:
         wsums = np.round(owsums/owsums.max(), 2)
-        not_sel, = np.where(np.ma.masked_less_equal(wsums, 0.5).mask==True)
+        not_sel, = np.where(np.ma.masked_less_equal(wsums, threshold).mask==True)
         ONAME = os.path.join(dump, "not-selected-channels.txt")
         snitch.info(f"Saving channel not selected to: {ONAME}")
         with open(ONAME, "w") as file:
             file.writelines([f"{_}".zfill(4) + "\n" for _ in not_sel])
 
-        sel, = np.where(np.ma.masked_less_equal(wsums, 0.5).mask==False)
+        sel, = np.where(np.ma.masked_less_equal(wsums, threshold).mask==False)
         snitch.info(f"{sel.size} of {wsums.size} channels selected.")
         ONAME = os.path.join(dump, "selected-channels.txt")
         snitch.info(f"Saving channel sel to: {ONAME}")
@@ -303,11 +305,14 @@ def parser():
 def main():
     ps = parser().parse_args()
 
+    if ps.output:
+        make_out_dir(ps.output)
+
     # get info about beams and plot them
-    get_and_plot_beam_info(ps.idir, search=ps.search, dump=ps.output)
+    get_and_plot_beam_info(ps.idir, search=ps.search, dump=ps.output, prefix=ps.prefix)
        
     if ps.auto_select or ps.sel:
-        read_and_plot_beams2(ps.idir, dump=ps.output, beam_file="beams.npz",
+        read_and_plot_beams2(ps.idir, dump=ps.output, beam_file=f"{ps.prefix}-beams.npz",
             threshold=ps.threshold, sel=ps.sel, autoselect=ps.auto_select)
 
 
