@@ -44,7 +44,7 @@ def initialize(pica=False):
     op_dir = os.path.join(os.path.dirname(__file__),  "..", "posta")
     work_dir = os.path.abspath(os.path.curdir)
 
-    pica_files = ["pica_box_region.reg", "noise_region.reg"]
+    pica_files = ["pica_box_region.reg", "pica_noise_region.reg"]
 
     default_files = ["showrunner.sh", "env-vars", "bk_plots.yml"]
 
