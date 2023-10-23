@@ -29,7 +29,7 @@ welcome(){
 }
 
 installRequiredSoftware(){
-    pip install -U pip
+    # pip install -U pip
     pkgs=("spimple" "Owlcat" "MontagePy")
 
     echo -e "\n############################################################"
@@ -455,7 +455,7 @@ runScrappy(){
     sc-losrm -id $scout/los-data \
         -od $scout/los-rm-data -md 400 --depth-step 1
 
-    if [[ bokeh ]]
+    if $bokeh
     then
         echo -e "\n############################################################"
         echo "Generate interactive plots for the various LoS"

@@ -142,7 +142,8 @@ def read_wsums(image):
     return hdr["WSCVWSUM"]
 
 
-def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
+def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None,
+    exclude=None):
     """
     folder: str
         The directory containing your intended images
@@ -161,6 +162,16 @@ def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
     ONAME = os.path.join(dump, "orig-wsums.txt")
     snitch.info(f"Saving WSUMS to: {ONAME}")
     np.savetxt(ONAME, owsums)
+
+    if exclude:
+        exclude = exclude.split(",")
+        if len(exclude) > 1 or exclude[0].isnumeric():
+            exc = np.array(exclude).astype(int)
+        else:
+            exclude = exclude[0]
+            exc = np.loadtxt(exclude).astype(int)
+        snitch.info(f"You've chosen to exclude channels: {', '.join(exc.astype(str))}")
+        owsums[exc] = 0
 
     
     if autoselect:
@@ -184,8 +195,15 @@ def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
        
 
     else:
-        snitch.info(f"Reading custom selected channel file: {sel}")
-        sel = np.loadtxt(sel)
+        sel = sel.split(",")
+        if len(sel) > 1 or sel[0].isnumeric():
+            sel = np.array(sel).astype(int)
+        else:
+            sel = sel[0]
+            snitch.info(f"Reading custom selected channel file: {sel}")
+            sel = np.loadtxt(sel).astype(int)
+        snitch.info(f"You've selected channels: {', '.join(sel.astype(str))}")
+    
         not_sel = np.zeros(len(images))
         not_sel[sel] = 1
         not_sel, = np.where(not_sel==0)
@@ -193,6 +211,11 @@ def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
         ONAME = os.path.join(dump, "wsums.txt")
         snitch.info(f"Saving WSUMS of selected channels to: {ONAME}")
         np.savetxt(ONAME, owsums[sel])
+
+        ONAME = os.path.join(dump, "selected-channels.txt")
+        snitch.info(f"Saving channel sel to: {ONAME}")
+        with open(ONAME, "w") as file:
+            file.writelines([f"{_}".zfill(4) + "\n" for _ in sel])
        
 
         ONAME = os.path.join(dump, "not-selected-channels.txt")
@@ -205,7 +228,7 @@ def channel_selection(folder, dump, threshold=0.5, autoselect=True, sel=None):
 
 
 def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz",
-    threshold=0.5, sel=None, autoselect=True):
+    threshold=0.5, sel=None, autoselect=True, exclude=None):
     """
     folder: str
         Where the input images are
@@ -214,7 +237,7 @@ def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz",
     """
     
     sel, not_sel = channel_selection(folder, dump, threshold=threshold,
-        sel=sel, autoselect=autoselect)
+        sel=sel, autoselect=autoselect, exclude=exclude)
     
     chans = [f"{_}".zfill(4) for _ in sel]
     
@@ -293,12 +316,20 @@ def parser():
         Only used if -s is active"""
     )
     ps.add_argument("-sc", "--select-channels", dest="sel", default=None,
-        type=str, help="Custom channel selections"
+        type=str, help="""Custom channel selections. This can be a file 
+        containing those channels, or a comma separated list
+        e.g. '0,1,2,3'"""
         )
     ps.add_argument("-as", "--auto-select", action="store_true", dest="auto_select", 
         help="Try and suggest valid channels for selection. Use in conjuction with '-t'.")
+
     ps.add_argument("-pre", "--prefix", type=str, default="00", 
         help="Prefix to append on the output images")
+
+    ps.add_argument("-ec", "--exclude-channels", dest="exclude", type=str,
+        help="""Channels to be excluded during autoselection. 
+        This can be a file containing those channels, or a comma separated list
+        e.g. '0,1,2,3'.""")
     return ps
 
 
@@ -313,7 +344,8 @@ def main():
        
     if ps.auto_select or ps.sel:
         read_and_plot_beams2(ps.idir, dump=ps.output, beam_file=f"{ps.prefix}-beams.npz",
-            threshold=ps.threshold, sel=ps.sel, autoselect=ps.auto_select)
+            threshold=ps.threshold, sel=ps.sel, autoselect=ps.auto_select,
+            exclude=ps.exclude)
 
 
 def console():
