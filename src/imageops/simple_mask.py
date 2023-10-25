@@ -14,8 +14,8 @@ from scipy.ndimage import rotate, label
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-
 from utils.logger import logging, LOG_FORMATTER, setup_streamhandler
+
 snitch = logging.getLogger(__name__)
 snitch.addHandler(setup_streamhandler())
 snitch.setLevel("INFO")
@@ -35,7 +35,11 @@ def get_wcs(name:str, pixels=False):
         dropped = wcs.naxis - 2
         # remove extra and superflous axes. These become problematic
         for _ in range(dropped):
-            wcs = wcs.dropaxis(-1)
+            try:
+                # sometimes crazy things happen
+                wcs = wcs.dropaxis(-1)
+            except IndexError:
+                continue
  
     if pixels:
         # get the image dimensions
@@ -169,6 +173,14 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
     hdr = fits.getheader(fname)
     if "HISTORY" in hdr:
         del hdr["HISTORY"]
+
+    if hdr["NAXIS"] > 2:
+        wc = WCS(hdr)
+        for _ in range(wc.naxis-2):
+            wc = wc.dropaxis(-1)
+        hdr = wc.to_header()
+
+
 
     # cater for empty masks
     if above is None and below is None:

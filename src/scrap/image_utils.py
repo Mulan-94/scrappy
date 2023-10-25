@@ -288,7 +288,13 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
         mask = read_fits_mask(bounds).numpy
        
         # label the different regions for tag
-        label(mask, output=mask)
+        try:
+            label(mask, output=mask)
+        except RuntimeError:
+            # catching the error for when mask is patchy and needs float array
+            snitch.debug(f"Caught runtime error due to int Mask. Switching to float")
+            mask = mask.astype(float)
+            label(mask, output=mask)
 
         mycoords, mxcoords = np.where(mask>0)
         mcords = list(zip(mycoords, mxcoords))

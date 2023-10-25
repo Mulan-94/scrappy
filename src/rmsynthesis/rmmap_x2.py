@@ -393,6 +393,7 @@ def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-m
 
     depoln = fp_lo / fp_hi
     depoln_err = depolzn_err(fp_lo, fperr_lo, fp_hi, fperr_hi)
+    depoln_err_ratio = depoln_err/depoln
 
 
     depol_hdr = modify_fits_header(ihdr, ctype='depol', unit='unit')
@@ -405,6 +406,15 @@ def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-m
     fits.writeto(output+"-err.fits", depoln_err, depol_hdr,
         overwrite=True)
 
+    fits.writeto(output+"-err-ratio.fits", depoln_err_ratio, depol_hdr,
+        overwrite=True)
+
+    # write out fpol error at the highest freq (shortest wavelength)
+    fperr_hdr = modify_fits_header(ihdr, ctype='fpol_err', unit='unit')
+    fits.writeto(output+"-fpol-err.fits", fperr_hi, fperr_hdr,
+        overwrite=True)
+
+    
     snitch.info("Depolarization maps ready")
     return
 

@@ -30,7 +30,7 @@ welcome(){
 
 installRequiredSoftware(){
     # pip install -U pip
-    pkgs=("spimple" "Owlcat" "MontagePy")
+    pkgs=("MontagePy" "Owlcat" "spimple")
 
     echo -e "\n############################################################"
     echo "Installing required packages if need be"
@@ -213,7 +213,7 @@ selectedChannels_CubeConvolve(){
     for s in $STOKES
         do        
             spimple-imconv -image $SEL_CUBES/${s,,}-image-cube.fits \
-                -o $CONV_CUBES/${s,,}-conv-image-cube -pp ${beam_dims[@]}
+                -o $CONV_CUBES/${s,,}-image-cube -pp ${beam_dims[@]}
         done
 
 
@@ -548,19 +548,50 @@ main(){
         -rb pica_box_region.reg
         "
 
+
+    # ----------------------------------------------------------------------
+    # select whether to use the convolved images/cubes or not
+    CONV=false
+
+    if $CONV
+    then
+        CUBES=$CONV_CUBES
+        IMAGES=$CONVIM
+    else
+        CUBES=$SEL_CUBES
+        IMAGES=$IMGS
+    fi
+    # ----------------------------------------------------------------------
+
+
     # pass all the arguments between the quotes to this function
     generateRmMap "
-        -q $CONV_CUBES/q-conv-image-cube.fits
-        -u $CONV_CUBES/u-conv-image-cube.fits
-        -i $CONV_CUBES/i-conv-image-cube.fits -ncore 45 -md 200
+        -q $CUBES/q-image-cube.fits
+        -u $CUBES/u-image-cube.fits
+        -i $CUBES/i-image-cube.fits -ncore 45 -md 200
         -o $PRODS/initial -mask $mask_dir/true_mask.fits -f frequencies.txt "
+
+    
+    # create a mask for only where fpol SNR > 10
+    makeMasks "
+        -o $mask_dir/fpol-snrmask.fits 
+        -above 10 $PRODS/initial-clean-fdf-SNR.fits"
+
+
 
     # signature
     # runScrappy(thresh, region_size, output_dir, boke_plots?, other_args)
     runScrappy 50 3 $PRODS/scrap-outputs false \
-        "-m $mask_dir/true_mask.fits
+        "-m $mask_dir/fpol-snrmask.fits 
         -nrf pica_noise_region.reg 
-        -idir $IMGS"
+        -idir $IMAGES"
+
+
+    sc-depol $CUBES/i-image-cube.fits \
+        $CUBES/q-image-cube.fits \
+        $CUBES/u-image-cube.fits \
+        $PRODS/scrap-outputs/los-data/reg_1.npz \
+        $mask_dir/true_mask.fits
 
     # generateSpiMap
 
@@ -572,8 +603,8 @@ LOGFILE="showrunner.log"
 
 if [[ $1 = '-h' ]]
 then
-    welcome | tee $LOGFILE
+    welcome | tee -a $LOGFILE
 else
     # Run this main function
-    main | tee $LOGFILE
+    main | tee -a $LOGFILE
 fi

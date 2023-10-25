@@ -6,7 +6,7 @@ At its tail end, it generates plots to be used with PolarVis:
     https://github.com/Mulan-94/polarvis
 
 It consists of a pipeline script `showrunner.sh <./posta/showrunner.sh>`_ which performs multiple steps to
-achieve this end goal. This bash script can be modified to suit one's needs.
+achieve this end goal. This bash script CAN and **SHOULD** be modified to suit one's needs.
 
 To avail the scripts required for ``showrunner.sh``, initialise those files using the following command:
 
