@@ -19,7 +19,7 @@ from utils.rmmath import (polarised_snr, linear_polzn_error, frac_polzn,
 
 
 from scrap.scraplog import snitch
-from scrap.arguments import parser
+# from scrap.arguments import parser
 from scrap.image_utils import (read_fits_image, read_fits_cube, region_flux_jybm,
     region_is_above_thresh,
     read_regions_as_pixels, make_default_regions, make_noise_region_file,
@@ -534,10 +534,21 @@ def step4_plots():
     PLOT_DIR = make_out_dir(PLOT_DIR, delete_if_exists=True)
 
 
+def starter(snitch, debug=False):
+    if debug:
+        snitch.setLevel(0)
+
+    for key, value in opts._get_kwargs():
+        snitch.warning(f"{key:17}:  {value}")
+    
+    return
+
 
 def main():
     global RDIR, RFILE, CURRENT_RFILE, NRFILE, DEBUG
     opts = parser().parse_args()
+
+    snitch = starter(snitch, debug=opts.debug)
 
     # doing it this way to modify odir
     if opts.reg_size is None:

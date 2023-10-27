@@ -484,9 +484,9 @@ def main():
         # divide everything by I to reduce variations**
         fp_data = frac_polzn(idata, qdata, udata)
 
-        pdata = linear_polzn(qdata/idata, udata/idata)
+        pdata = linear_polzn(qdata, udata)
     else:
-        pdata = linear_polzn(qdata/idata, udata/idata)
+        pdata = linear_polzn(qdata, udata)
     
 
     # now save the fits
