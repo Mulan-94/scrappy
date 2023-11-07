@@ -100,7 +100,7 @@ def error_margins(base, y, err):
     """
     ebars = Whisker(source=ColumnDataSource(data=dict(base=base, 
                     upper=y + err, lower=y - err)),
-                    line_cap="round", line_color="red",
+                    line_cap="round", line_color="red", visible=False,
                     line_alpha=ALPHA, lower_head=None, upper_head=None,
                     line_width=0.5, base="base", upper="upper", lower="lower")
     return ebars
@@ -175,8 +175,10 @@ def make_plot(indata, meta_title, meta_data):
         if "y_error" in params:
             ebars = error_margins(data_src[xaxis], data_src[yaxis], indata[params["y_error"]])
             ebars.name="ebar_y"
-            ebars.js_link("visible", rend, "visible")
             rend.js_link("visible", ebars, "visible")
+            ebars.js_link("visible", rend, "visible")
+            if rend.visible:
+                ebars.visible = True
             fig.add_layout(ebars)
 
         if "x_error" in params:
@@ -184,6 +186,8 @@ def make_plot(indata, meta_title, meta_data):
             ebars.name="ebar_x"
             ebars.js_link("visible", rend, "visible")
             rend.js_link("visible", ebars, "visible")
+            if rend.visible:
+                ebars.visible = True
             fig.add_layout(ebars)
 
         legend_items.append((params["label"], [rend]))

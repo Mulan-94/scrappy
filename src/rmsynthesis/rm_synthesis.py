@@ -240,7 +240,7 @@ def read_los_data(filename, compress=True):
                 data=value, mask=mask).compressed()
 
     if "lpol" not in losdata:
-        losdata["lpol"] = losdata["Q"]/losdata["I"] + 1j*(losdata["U"]/losdata["I"])
+        losdata["lpol"] = losdata["Q"] + 1j*(losdata["U"])
     losdata["reg_num"] = reg_num
     losdata = dicto(losdata)
 

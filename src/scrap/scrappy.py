@@ -19,7 +19,7 @@ from utils.rmmath import (polarised_snr, linear_polzn_error, frac_polzn,
 
 
 from scrap.scraplog import snitch
-# from scrap.arguments import parser
+from scrap.arguments import parser
 from scrap.image_utils import (read_fits_image, read_fits_cube, region_flux_jybm,
     region_is_above_thresh,
     read_regions_as_pixels, make_default_regions, make_noise_region_file,
@@ -279,9 +279,7 @@ def make_per_region_data_output(images, reg_file, noise_file, threshold, noise_r
         n_chans = len(images)
         if n_masked != n_chans and n_masked <= n_chans*MFT:
             # adding lpol here because complex arrays dont work with multiproc array
-            sds["lpol"] = linear_polzn(
-                np.array(sds["Q"])/np.array(sds["I"]), 
-                np.array(sds["U"])/np.array(sds["I"]))
+            sds["lpol"] = linear_polzn(np.array(sds["Q"]), np.array(sds["U"]))
             
             if n_masked > 0:
                 snitch.warning(f"{reg.meta['text']}: flagged {n_masked}/{n_chans} points")
@@ -419,15 +417,15 @@ def cubes_parse_valid_fpol_region_per_region(reg, triplets, wcs, noise_reg,
     datas["U"] = signal_u
     datas["U_err"] = u_noise 
 
-    datas["lpol"] = linear_polzn(signal_q/signal_i, signal_u/signal_i)
+    datas["lpol"] = linear_polzn(signal_q, signal_u)
     datas["fpol"] = frac_polzn(signal_i, signal_q, signal_u)
     datas["fpol_err"] = frac_polzn_error(signal_i, signal_q, signal_u,
                                         i_noise, q_noise, u_noise)
     datas["lpol_err"] = linear_polzn_error(signal_q,
                                 signal_u, q_noise, u_noise)
-    datas["pangle"] = polzn_angle(signal_q/signal_i, signal_u/signal_i)
-    datas["pangle_err"] = polzn_angle_error(signal_q/signal_i,
-                                signal_u/signal_i, q_noise, u_noise)
+    datas["pangle"] = polzn_angle(signal_q, signal_u)
+    datas["pangle_err"] = polzn_angle_error(signal_q,
+                                signal_u, q_noise, u_noise)
 
 
 
@@ -534,8 +532,8 @@ def step4_plots():
     PLOT_DIR = make_out_dir(PLOT_DIR, delete_if_exists=True)
 
 
-def starter(snitch, debug=False):
-    if debug:
+def starter(snitch, opts):
+    if opts.debug:
         snitch.setLevel(0)
 
     for key, value in opts._get_kwargs():
@@ -548,7 +546,7 @@ def main():
     global RDIR, RFILE, CURRENT_RFILE, NRFILE, DEBUG
     opts = parser().parse_args()
 
-    snitch = starter(snitch, debug=opts.debug)
+    starter(snitch, opts)
 
     # doing it this way to modify odir
     if opts.reg_size is None:

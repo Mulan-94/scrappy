@@ -42,16 +42,16 @@ lpol:
       label: amplitude
       color: AMP_COLOUR
       visible: true
-    # real:
-    #   # y_error: power_err
-    #   label: real
-    #   color: REAL_COLOUR
-    #   visible: false
-    # imaginary:
-    #   # y_error: power_err
-    #   label: imaginary
-    #   color: IMAG_COLOUR
-    #   visible: false
+    real:
+      # y_error: power_err
+      label: real
+      color: REAL_COLOUR
+      visible: false
+    imaginary:
+      # y_error: power_err
+      label: imaginary
+      color: IMAG_COLOUR
+      visible: false
 
 angle:
   title: Pol Angle
