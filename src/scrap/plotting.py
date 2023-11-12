@@ -311,9 +311,9 @@ def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1
         xmin, ymin = np.min(lims, axis=0)
         xmax, ymax = np.max(lims, axis=0)
         wiggle = 50
-        
+    
         ax.imshow(image_data, origin="lower", cmap="coolwarm",
-        norm=colors.LogNorm(vmin=image_data.min(), vmax=image_data.max())
+        norm=colors.LogNorm(vmin=np.nanmin(image_data), vmax=np.nanmax(image_data))
         # vmin=data.min(), vmax=data.max()
         ) 
         ax.set_title(f"{im.upper()}; Only > t {threshold} x n {noise:.6f} in log")

@@ -101,8 +101,13 @@ def read_fits_image(name: str, mask=None, numpy=True):
     
     data = fits.getdata(name).squeeze()
     image.header = fits.getheader(name)
-    image.freq = image.header["CRVAL3"]
-    image.chan_width = image.header["CDELT3"]
+    try:
+        image.freq = image.header["CRVAL3"]
+        image.chan_width = image.header["CDELT3"]
+    except:
+        snitch.warning(f"This fits image: '{name}' does not have frequency info")
+        image.freq = 0
+        image.chan_width = 0
 
     if "HISTORY" in image.header:
         del image.header["HISTORY"]
