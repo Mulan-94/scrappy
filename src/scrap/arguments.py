@@ -105,11 +105,15 @@ def parser():
         help="""An input region file. Otherwise, one will be auto-generated.
         Genereated regions will be stored here
         """)
-    regopts.add_argument("-rs", "--region-size", dest="reg_size", #nargs="+",
-        type=int, #default=[],
+    regopts.add_argument("-rs", "--region-size", dest="reg_size", 
+        type=int, 
          metavar="", 
         help=("Create regions of this circle radius and perform analyses on them."+
         " If you want to set the data threshold, please use --threshold."))
+    regopts.add_argument("-shape", "--shape", dest="shape", type=str,
+        default="circle", metavar="",
+        help="The shape of the resulting regions: either 'circle' or 'rectangle'"
+    )
     regopts.add_argument("-m", "--mask", dest="mask", metavar="",
         type=str, default=None,
         help="""Mask containing the area where LoS should be restricted.

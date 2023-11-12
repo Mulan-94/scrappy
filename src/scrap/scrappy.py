@@ -210,7 +210,7 @@ def parse_valid_fpol_region_per_region(triplets, cidx, reg, noise_reg,
         return False   
 
 
-def make_per_region_data_output(images, reg_file, noise_file, threshold, noise_ref):
+def make_per_region_data_output(images, reg_file, noise_file, threshold, noise_ref, shape="circle"):
     """
     images: list
         List containing tuples with the channelise I,Q,U images. 
@@ -293,9 +293,17 @@ def make_per_region_data_output(images, reg_file, noise_file, threshold, noise_r
             count += 1
 
             sky = reg.to_sky(wcs)
-            valid_regions.append(
-                "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
-                    sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec,
+
+            if shape == "circle":
+                valid_regions.append(
+                    "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
+                        sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec,
+                        ','.join(reg.meta["tag"])))
+            else:
+                valid_regions.append(
+                "box({:.6f}, {:.6f}, {:.6f}\", {:.6f}\", 0) # tag={{{}}}".format(
+                    sky.center.ra.deg, sky.center.dec.deg, sky.width.arcsec*2,
+                    sky.radius.width*2,
                     ','.join(reg.meta["tag"])))
         else:
             snitch.warning(f"Skipping region {reg.meta['text']} because either:")
@@ -380,7 +388,7 @@ def cubes_make_per_region_data_output(triplets, reg_file, noise_file, threshold,
 
 
 def cubes_parse_valid_fpol_region_per_region(reg, triplets, wcs, noise_reg,
-    threshold, datas):
+    threshold, datas, shape="circle"):
     """
     triplets: pass the cube data at this point
     freqs: an array containing the input freqquencies
@@ -462,15 +470,22 @@ def cubes_parse_valid_fpol_region_per_region(reg, triplets, wcs, noise_reg,
 
 
     sky = reg.to_sky(wcs)
-    reg_coord = "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
-            sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec,
+
+    if shape == "circle":
+        reg_coord = "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
+                sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec,
+                ','.join(reg.meta["tag"]))
+    else:
+        reg_coord = "box({:.6f}, {:.6f}, {:.6f}\", {:.6f}\", 0) # tag={{{}}}".format(
+            sky.center.ra.deg, sky.center.dec.deg, sky.width.arcsec*2, sky.width.arcsec*2,
             ','.join(reg.meta["tag"]))
     
     return reg_coord
 
 
 
-def step1_default_regions(reg_size, wcs_ref, bounds, threshold=1, rnoise=None):
+def step1_default_regions(reg_size, wcs_ref, bounds, threshold=1, rnoise=None,
+    shape="circle"):
     # Step 1. Make the default regions, ie within the source dimensions
     # we establish the sources bounds here, no parsing involved
     global RDIR, CURRENT_RFILE, NRFILE
@@ -478,30 +493,32 @@ def step1_default_regions(reg_size, wcs_ref, bounds, threshold=1, rnoise=None):
     RDIR = make_out_dir(RDIR)
 
     CURRENT_RFILE = make_default_regions(bounds, reg_size,
-                        wcs_ref, RFILE, overwrite=OVERWRITE)
+                        wcs_ref, RFILE, overwrite=OVERWRITE, shape=shape)
 
     overlay_regions_on_source_plot(
         CURRENT_RFILE, wcs_ref,
-        rnoise or NRFILE, threshold)
+        rnoise or NRFILE, threshold, shape=shape)
     return
 
 
-def step2_valid_reg_candidates(wcs_ref, noise_ref, threshold, rnoise=None):
+def step2_valid_reg_candidates(wcs_ref, noise_ref, threshold, rnoise=None,
+    shape="circle"):
     # Step 2: Determines which regions meet the requried threshold
     # we use the I-MFS image here. Basiclally just map the source extent
     global CURRENT_RFILE, NRFILE
 
     CURRENT_RFILE = parse_valid_region_candidates(wcs_ref, CURRENT_RFILE,
-            NRFILE, threshold, noise=rnoise, overwrite=OVERWRITE)
+            NRFILE, threshold, noise=rnoise, overwrite=OVERWRITE, shape=shape)
     
     overlay_regions_on_source_plot(
         CURRENT_RFILE, wcs_ref,
-        rnoise or NRFILE, threshold)
+        rnoise or NRFILE, threshold, shape=shape)
 
     return
 
 
-def step3_valid_los_regs(image_dir, threshold, noise_ref, rnoise=None, freq_file=None):
+def step3_valid_los_regs(image_dir, threshold, noise_ref, rnoise=None, freq_file=None,
+    shape="circle"):
     global CURRENT_RFILE, LOS_DIR, NRFILE
     
     LOS_DIR = make_out_dir(LOS_DIR, delete_if_exists=True)
@@ -514,10 +531,10 @@ def step3_valid_los_regs(image_dir, threshold, noise_ref, rnoise=None, freq_file
     # # Step 3: Generate the regional data files
     if not cubes:
         CURRENT_RFILE = make_per_region_data_output(images, CURRENT_RFILE, NRFILE,
-                        threshold=threshold, noise_ref=noise_ref)
+                        threshold=threshold, noise_ref=noise_ref, shape=shape)
     else:
         CURRENT_RFILE = cubes_make_per_region_data_output(images, CURRENT_RFILE, NRFILE,
-                        threshold=threshold, noise_ref=noise_ref, freqs=freq_file)
+                        threshold=threshold, noise_ref=noise_ref, freqs=freq_file, shape=shape)
 
     overlay_regions_on_source_plot(CURRENT_RFILE, noise_ref, rnoise or NRFILE,
         threshold)
@@ -634,8 +651,9 @@ def main():
             snitch.info("All specified input files have been found")
 
         step1_default_regions(reg_size, wcs_ref, bounds,
-            threshold=threshold, rnoise=rnoise)
-        step2_valid_reg_candidates(wcs_ref, noise_ref, threshold, rnoise=rnoise)
+            threshold=threshold, rnoise=rnoise, shape=opts.shape)
+        step2_valid_reg_candidates(wcs_ref, noise_ref, threshold, rnoise=rnoise, 
+            shape=opts.shape)
         
     
     # For scrappy
@@ -650,7 +668,7 @@ def main():
         if opts.image_dir is not None and os.path.isdir(opts.image_dir):
             image_dir = opts.image_dir
             step3_valid_los_regs(image_dir, threshold, wcs_ref, rnoise=rnoise,
-                freq_file=opts.freq_file)
+                freq_file=opts.freq_file, shape=opts.shape)
         elif opts.cubes is not None:
             if opts.freq_file is None:
                 snitch.error(
@@ -660,7 +678,7 @@ def main():
 
             image_dir = opts.cubes
             step3_valid_los_regs(image_dir, threshold, wcs_ref, rnoise=rnoise,
-                freq_file=opts.freq_file)
+                freq_file=opts.freq_file, shape=opts.shape)
         else:
             snitch.error(
                 f"Check that the specified --image-dir is correct: "+
