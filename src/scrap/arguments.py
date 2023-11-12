@@ -44,58 +44,22 @@ def parser():
             .\t
             .\t4. Optionaly, generate plots for fractional polarisation vs 
             lambda squared for each LoS
-                    
-            Examples
-            ========
-
-            plotting only
-            $ python scrap.py -p 50 20 -t mzima-t10 -plp -piqu --plot-grid
-            
-            stats and plotting
-            $ python scrap.py -f clean-small.txt -rs 50 20 -ap 
-                -t mzima-t10-v2 --threshold 10 --noise -0.0004 -ap -plp -piqu
-            
-            with region files
-            $ python scrap.py -rf regions/beacons-20-chosen.reg -f clean-small.txt
-                -rs 20 -t chosen --threshold 10
             """
         )
     
-    reqopts = parsing.add_argument_group("Required arguments (supply only one, not both)")
+    reqopts = parsing.add_argument_group("Options")
     genopts = parsing.add_argument_group("General arguments")
     regopts = parsing.add_argument_group("Region generation arguments")
     losopts = parsing.add_argument_group("LoS Data generation arguments")
     plot_parsing = parsing.add_argument_group("Plotting Arguments")
 
-    mexc_losopts = reqopts.add_mutually_exclusive_group(required=True)
-    mexc_losopts.add_argument("-idir", "--image_dir", dest="image_dir", type=str,
-        metavar=None,
-        help="Where the channelised I, Q and U images are")
-    mexc_losopts.add_argument("-cubes", "--cubes", dest="cubes", type=str,
-        metavar=None, nargs=3,
-        help="""The I, Q, U image cubes (in this specific order) to be used.
-        This will require specification of -- freq-file""")
-
-    
-    reqopts.add_argument("-ref-image", "--ref-image", dest="wcs_ref",
-        metavar=None, default=None, required=True,
-        help="""The reference image that will be used to generate the default
-        region file. Must be the stokes I MFS image. 
-        This image will also be used to get the reference WCS for region file
-        genenration. Default is a file named 'i-mfs.fits'
-        """)
     reqopts.add_argument("-nri", "--noise-ref-image", dest="noise_ref",
-        metavar=None, default=None, required=True,
-        help="""The total intensity image used to get the noise reference.
-        Defaults to a file named 'i-mfs.fits'."""
+        metavar=None, default=None, required=False,
+        help="""The total intensity image used to get the global noise reference.
+        """
         )
-    reqopts.add_argument("-nrf", "--noise-region-file", dest="nrfile", type=str,
-        default=None, metavar=None,  required=True,
-        help="""A region file containing region to be used as the noise referrence.
-        """)
 
-
-    
+   
     parsing.add_argument("-todo", "--todo", dest="todo", 
         type=str, metavar="",
         help="""A string containing to do items. Specify using:
@@ -114,7 +78,7 @@ def parser():
         help="""If SNR below which data will not be considered. Default is 3""")
     genopts.add_argument("-j", "--nworkers", dest="nworkers", metavar="",
         type=int, default=None,
-        help="How many workers to use for prcessing"
+        help="How many workers to use for processing"
     )
     genopts.add_argument("--debug", dest="debug", action="store_true",
         help="""Disble parallel processing and enables sequential mode.""")
@@ -122,7 +86,14 @@ def parser():
     
 
     regopts.add_argument("-ro", "--regions-only", dest="regions_only",
-        action="store_true", help="Only generate the region files")
+        action="store_true", help="""Only generate the region files. This requires
+        the following options:
+        \033[1m \033[93m
+        --ref-image
+        --mask
+        --region-size
+        \033[0m
+        """)
     
     regopts.add_argument("-mrn", "--minimum-region-noise", dest="rnoise",
         type=float, default=None, metavar="", 
@@ -139,30 +110,52 @@ def parser():
          metavar="", 
         help=("Create regions of this circle radius and perform analyses on them."+
         " If you want to set the data threshold, please use --threshold."))
-    regopts.add_argument("-xr", "--x-range", dest="x_range", metavar="",
-        type=float, nargs=2, default=None,
-        help="""Space separated list containing RA in degrees within which 
-        to generate regions""")
-    regopts.add_argument("-yr", "--y-range", dest="y_range", metavar="",
-        type=float, nargs=2, default=None,
-        help="""Space separated list containing DEC in degrees within which 
-        to generate regions""")
     regopts.add_argument("-m", "--mask", dest="mask", metavar="",
         type=str, default=None,
         help="""Mask containing the area where LoS should be restricted.
-        This will supercede -xr and -yr options. They are mutually exclusive.
+        This can be a FITS file or a region file (*.reg). It's REQUIRED for 
+        automatically making regions.
         """)
 
-
+    losopts.add_argument("-lo", "--los-only", dest="los_only",
+        action="store_true",
+        help="""Only generate the line of sight data files.
+        The following options should be specified:
+        \033[1m \033[93m
+        --idir/--cubes
+        --ref-image
+        --mask/--region-file
+        --noise-ref-image
+        --noise-ref-file
+        \033[0m 
+        """)
+    mexc_losopts = losopts.add_mutually_exclusive_group(required=False)
+    mexc_losopts.add_argument("-idir", "--image_dir", dest="image_dir", type=str,
+        metavar=None,
+        help="Where the channelised I, Q and U images are")
+    mexc_losopts.add_argument("-cubes", "--cubes", dest="cubes", type=str,
+        metavar=None, nargs=3,
+        help="""The I, Q, U image cubes (in this specific order) to be used.
+        This will require specification of --freq-file""")
 
     losopts.add_argument("-freqs", "--freq-file", dest="freq_file", type=str,
         metavar="",
         help="""Text file containing frequencies to be used. This is only active 
         when the input FITS images are cubes and is particularly useful when the 
         frequencies of images that form the cube do not increase monotonically.""")
-    losopts.add_argument("-lo", "--los-only", dest="los_only",
-        action="store_true",
-        help="Only generate the line of sight data files")
+    
+    losopts.add_argument("-ref-image", "--ref-image", dest="wcs_ref",
+        metavar=None, default=None, required=False,
+        help="""The reference image that will be used to generate the default
+        region file. Must be the stokes I MFS image. 
+        This image will also be used to get the reference WCS for region file
+        generation.
+        """)
+   
+    losopts.add_argument("-nrf", "--noise-region-file", dest="nrfile", type=str,
+        default=None, metavar=None,  required=False,
+        help="""A region file containing region to be used as the noise reference.
+        """)
     losopts.add_argument("-mft", "--minimum-flag-threshold", dest="mft",
         type=float, default=None, metavar="", help="""
         Fraction of flags above which lines of sight should be ignored.  

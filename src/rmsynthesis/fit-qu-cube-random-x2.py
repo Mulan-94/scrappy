@@ -14,12 +14,6 @@ import numpy as np
 from astropy.io import fits
 from lmfit import minimize, Parameters, Minimizer
 
-PATH = set(sys.path)
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), os.pardir))
-if not PATH.issuperset(PROJECT_ROOT):
-    sys.path.append(PROJECT_ROOT)
-
 from utils.genutils import dicto, read_npz
 
 # Make syncronised data store and reused data stores global for easier use
@@ -239,7 +233,6 @@ def call_fitting(x, y):
     fpol0 = pmax[x, y]
 
     # calling the model with the initial max fpol, intial RM guess and the polarisation angle
-    # set_trace()
 
     fit_residual = call_model(p0=fpol0, PA=theta, RM=rm,
         RM_min=-1000, RM_max=1000, 

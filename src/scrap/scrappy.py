@@ -11,6 +11,7 @@ from itertools import product
 from multiprocessing import Array
 from natsort import natsorted
 
+
 from utils.genutils import fullpath, make_out_dir, does_specified_file_exist
 from utils.mathutils import (is_infinite, are_all_nan, nancount, are_all_zeroes,
     signal_to_noise)
@@ -21,11 +22,10 @@ from utils.rmmath import (polarised_snr, linear_polzn_error, frac_polzn,
 from scrap.scraplog import snitch
 from scrap.arguments import parser
 from scrap.image_utils import (read_fits_image, read_fits_cube, region_flux_jybm,
-    region_is_above_thresh,
+    region_is_above_thresh, read_region_bounds,
     read_regions_as_pixels, make_default_regions, make_noise_region_file,
     parse_valid_region_candidates, write_regions, image_noise, get_wcs)
 from scrap.plotting import overlay_regions_on_source_plot
-
 
 def initialise_globals(odir="scrappy-out"):
     global ODIR, RDIR, PLOT_DIR, LOS_DIR, RFILE, CURRENT_RFILE, NRFILE
@@ -61,10 +61,8 @@ def make_image_lists(image_dir):
     cubes = False
     images = dict()
     for stokes in "IQU":
-        imlist = subprocess.check_output(
-            f"ls -v {image_dir}/*-[0-9][0-9][0-9][0-9]-{stokes}-image.fits",
-            shell=True)
-        images[stokes] = imlist.decode().split("\n")[:-1]
+        imlist = natsorted(glob(f"{image_dir}/*-[0-9][0-9][0-9][0-9]-{stokes}-image.fits"))
+        images[stokes] = imlist
     
     snitch.info("Single channel mode.")
 
@@ -495,7 +493,7 @@ def step2_valid_reg_candidates(wcs_ref, noise_ref, threshold, rnoise=None):
     # we use the I-MFS image here. Basiclally just map the source extent
     global CURRENT_RFILE, NRFILE
 
-    CURRENT_RFILE = parse_valid_region_candidates(noise_ref, CURRENT_RFILE,
+    CURRENT_RFILE = parse_valid_region_candidates(wcs_ref, CURRENT_RFILE,
             NRFILE, threshold, noise=rnoise, overwrite=OVERWRITE)
     
     overlay_regions_on_source_plot(
@@ -568,14 +566,6 @@ def main():
     else:
         todo = list("rl")
 
-    req_files = [opts.freq_file, opts.rfile, opts.nrfile, opts.wcs_ref, opts.mask,
-        opts.noise_ref]
-    req_files.extend(opts.cubes) if opts.cubes else ""
-    
-    if does_specified_file_exist(*req_files):
-        snitch.info("All specified input files have been found")
-
-
     ##########################################
     #  For regions
     ##########################################
@@ -599,7 +589,7 @@ def main():
         reg_size = opts.reg_size
 
     if opts.wcs_ref is None:
-        wcs_ref = "i-mfs.fits"
+        wcs_ref = None
     else:
         wcs_ref = opts.wcs_ref
 
@@ -609,28 +599,15 @@ def main():
     else:
         rnoise = None
 
+
     if opts.mask is not None:
         bounds = opts.mask
-    else:
-        if opts.x_range is None:
-            # left to right: ra in degrees
-            pictor_x = (80.04166306500294, 79.84454319889994)
-            x_range = pictor_x
-        else:
-            x_range = opts.x_range
 
-        if opts.y_range is None:
-            #  bottom to top dec in degrees
-            pictor_y = (-45.81799666164118, -45.73325018138195)
-            y_range = pictor_y
-        else:
-            y_range = opts.y_range
-        bounds = [*x_range, *y_range]
 
     if opts.noise_ref is not None:
         noise_ref = opts.noise_ref
     else:
-        noise_ref = "i-mfs.fits"
+        noise_ref = None
 
     if opts.threshold is None:
         threshold = 3
@@ -643,14 +620,34 @@ def main():
     if opts.polzd_snr:
         USE_POLZD_SNR = opts.polzd_snr
 
-    # For regions
+    # ------------------------------------------
+    if opts.regions_only:
+        todo = ["r"]
+    if opts.plots_only:
+        todo = ["p"]
+    if opts.los_only:
+        todo = ["l"]
+    # ------------------------------------------
+
     if opts.regions_only or "r" in todo and opts.rfile is None:
+        help = "ref-image mask".split()
+        req_files =  [wcs_ref, bounds, noise_ref]
+        if does_specified_file_exist(*req_files):
+            snitch.info("All specified input files have been found")
+
         step1_default_regions(reg_size, wcs_ref, bounds,
             threshold=threshold, rnoise=rnoise)
         step2_valid_reg_candidates(wcs_ref, noise_ref, threshold, rnoise=rnoise)
+        
     
     # For scrappy
     if opts.los_only or "l" in todo:
+        help = "cubes image-dir ref-image mask noise-ref-image noise-region-file".split()
+        req_files = [opts.cubes or opts.image_dir, bounds or opts.rfile,
+                     opts.nrfile, wcs_ref, noise_ref]
+        req_files.append(opts.freq_file) if opts.cubes else ""
+        if does_specified_file_exist(*req_files):
+            snitch.info("All specified input files have been found")
  
         if opts.image_dir is not None and os.path.isdir(opts.image_dir):
             image_dir = opts.image_dir
@@ -693,19 +690,19 @@ if __name__ == "__main__":
     console()
 
     """
-    python scrappy.py -id imgs -od testing -ref-image
+    sc-los -id imgs -od testing -ref-image
         imgs/i-mfs.fits --threshold 3
 
     # test regions
-    python scrappy.py -od testing-regs -ref-image
+    sc-los -od testing-regs -ref-image
         imgs/i-mfs.fits --threshold 3 -rs 40 -todo r -idir imgs
 
     # test LOS
-    python scrappy.py -od testing-LOS -ref-image
+    sc-los -od testing-LOS -ref-image
         imgs/i-mfs.fits --threshold 3 -rs 40 -todo rl -idir imgs
 
 
-    python qu_pol/scrappy/scrappy.py -rs 3 -idir 
+    sc-los -rs 3 -idir 
         --threshold 10 -odir $prods/scrap-outputs 
         -ref-image i-mfs.fits -mrn 0.0006 -todo rl
     """
