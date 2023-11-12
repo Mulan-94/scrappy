@@ -217,9 +217,11 @@ def read_region_bounds(rfile, ref_image):
         # better results!!! Do NOT change!
         cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec,
             wcs_ref=ref_image)
+
+        reg = reg.to_pixel(wcs)
         x_npix, y_npix = wcs.pixel_shape
         
-        w, h = np.ceil(np.array((reg.width.value, reg.height.value))//2).astype(int)
+        w, h = np.ceil(np.array((int(reg.width), int(reg.height)))//2).astype(int)
         
         minx, maxx = cx-w, cx+w+1
         miny, maxy = cy-h, cy+h+1

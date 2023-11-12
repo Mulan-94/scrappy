@@ -117,6 +117,7 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
         'zeros' of 'ones' and nothing else! 
     """
     buffer = getattr(np, default_arr)(data.shape, dtype="uint8")
+    wcs = get_wcs(fname)
 
     if isinstance(reg, LineSkyRegion):
         snitch.info("We don't do lines here :), skipping")
@@ -128,9 +129,12 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
         cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec,
             wcs_ref=fname)
         x_npix, y_npix = data.shape
+
+        reg = reg.to_pixel(wcs)
+        x_npix, y_npix = wcs.pixel_shape
         
-        w, h = np.ceil(np.array((reg.width.value, reg.height.value))//2).astype(int)
-        
+        w, h = np.ceil(np.array((int(reg.width), int(reg.height)))//2).astype(int)
+                
         minx, maxx = cx-w, cx+w+1
         miny, maxy = cy-h, cy+h+1
 
@@ -146,7 +150,6 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
             pivot = cx, cy
             buffer = merotate2(buffer, -reg.angle.value, pivot=pivot)
     else:
-        wcs = get_wcs(fname)
         buffer = gen_reg_mask(reg, wcs, data.shape)
 
     return buffer
