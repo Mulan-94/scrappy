@@ -11,14 +11,13 @@ from itertools import product
 from regions import Regions, PixCoord, CirclePixelRegion, RectanglePixelRegion
 from scipy.ndimage import label, find_objects
 
-
 from scrap.scraplog import snitch
 from utils.mathutils import (are_all_nan, are_all_zeroes, is_infinite, rms,
     signal_to_noise, snr_is_above_threshold, are_all_masked)
 
 from utils.rmmath import (lambda_sq, frac_polzn, linear_polzn, linear_polzn_error,
     polarised_snr, frac_polzn_error, polzn_angle, polzn_angle_error)
-
+from imageops.simple_mask import gen_reg_mask, LineSkyRegion, RectangleSkyRegion
 
 def read_fits_cube(name: str, mask=None, numpy=True, freqs=None, stokes="I"):
     """
@@ -108,12 +107,20 @@ def read_fits_image(name: str, mask=None, numpy=True):
     if "HISTORY" in image.header:
         del image.header["HISTORY"]
 
-    try:
-        # testing if this value is an integer to trigger error
-        int(os.path.basename(name).split("-")[-2])
-        image.stokes = os.path.basename(name).split("-")[-3]
-    except ValueError:
-        image.stokes = os.path.basename(name).split("-")[-2]
+
+    # a whackaround
+    bname = os.path.basename(name).split("-")
+    if len(bname)>1:
+        try:
+            # testing if this value is an integer to trigger error
+            int(bname[-2])
+            image.stokes = bname[-3]
+        except:
+            image.stokes = bname[-2]
+    else:
+        # assume that it is tokes I
+        image.stokes = "I"
+
 
     if mask:
         mask_data = read_fits_mask(mask)
@@ -161,7 +168,7 @@ def world_to_pixel_coords(ra, dec, wcs_ref):
         wcs = get_wcs(wcs_ref)
     else:
         wcs = wcs_ref
-    world_coord = FK5(ra=ra*u.deg, dec=dec*u.deg)
+    world_coord = FK5(ra=ra, dec=dec)
     skies = SkyCoord(world_coord)
     x, y = skies.to_pixel(wcs)
     return int(x), int(y)
@@ -190,6 +197,47 @@ def get_wcs(name:str, pixels=False):
         return wcs
 
 
+def read_region_bounds(rfile, ref_image):
+    """
+    rfile: str
+        Name of the region file
+    ref_image: str
+        Name of image from where to get wcs REFerence
+    """
+
+    reg, = Regions.read(rfile, format="ds9")
+    wcs = get_wcs(ref_image)
+
+    if isinstance(reg, LineSkyRegion):
+        snitch.info("We don't do lines here :), skipping")
+        return
+
+    if isinstance(reg, RectangleSkyRegion):
+        # using a custom masker for rectangular regions because it gives
+        # better results!!! Do NOT change!
+        cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec,
+            wcs_ref=ref_image)
+        x_npix, y_npix = wcs.pixel_shape
+        
+        w, h = np.ceil(np.array((reg.width.value, reg.height.value))//2).astype(int)
+        
+        minx, maxx = cx-w, cx+w+1
+        miny, maxy = cy-h, cy+h+1
+        ys = np.arange(miny, maxy)
+        xs = np.arange(minx, maxx)
+        cds = np.array(list(product(ys, xs)))
+        ys = cds[:,0]
+        xs = cds[:,1]
+
+    else:
+        mask = gen_reg_mask(reg, wcs, wcs.pixel_shape)
+        ys, xs = np.where(mask>0)
+    return ys, xs
+
+
+
+
+
 def write_regions(name: str, regs: tuple, overwrite=True, reg_id=False):
     """
     reg_id: bool
@@ -198,7 +246,7 @@ def write_regions(name: str, regs: tuple, overwrite=True, reg_id=False):
     header = [
         "# Region file format: DS9 CARTA 2.0.0\n",
         ('global color=#2EE6D6 dashlist=8 3 width=2 ' +
-        'font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 ' +
+        'font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=1 ' +
         'edit=1 move=1 delete=1 include=1 source=1\n'),
         "FK5\n"
         ]
@@ -281,9 +329,11 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
     
     wcs = get_wcs(wcs_ref)
 
-    snitch.info("Making default regions")    
+    snitch.info("Making default regions")   
 
-    if isinstance(bounds, str):
+    # if isinstance(bounds, str):
+    if ".fits" in bounds.lower():
+        snitch.info("FITS mask found for region bounds")
         # reading this as an image because I want the valid areas
         mask = read_fits_mask(bounds).numpy
        
@@ -302,11 +352,12 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
         miny, maxy = mycoords.min(), mycoords.max()
         maxx_dim, maxy_dim = maxx, maxy
     else:
-        # get the maximum x and y image dimensions possible
-        minx, maxx, miny, maxy = bounds
-        maxx_dim, maxy_dim = get_wcs(wcs_ref, pixels=True)
-        minx, miny = world_to_pixel_coords(minx, miny, wcs)
-        maxx, maxy = world_to_pixel_coords(maxx, maxy, wcs)
+        snitch.info("Region file found for region bounds")
+        mycoords, mxcoords = read_region_bounds(bounds, wcs_ref)
+        mcords = list(zip(mycoords, mxcoords))
+        minx, maxx = mxcoords.min(), mxcoords.max()
+        miny, maxy = mycoords.min(), mycoords.max()
+        maxx_dim, maxy_dim = maxx, maxy
 
     xcoords = [_ for _ in range(minx, maxx, size*2) 
                 if is_valid_coord(size, _, maxx_dim)]
@@ -320,12 +371,11 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
         if _c%300 == 0:
             snitch.info(f"Patience. We are at {_c}")
             
-        if isinstance(bounds, str):
-            if (y,x) not in mcords:
-                continue
-            tag = f"g{mask[y,x]}"
-        else:
-            tag = "g1"
+        if (y,x) not in mcords:
+            continue
+        # tag = f"g{mask[y,x]}"
+        tag = "g1"
+    
             
         sky = CirclePixelRegion(PixCoord(x, y), radius=size).to_sky(wcs)
 
@@ -355,7 +405,7 @@ def make_noise_region_file(name=None, reg_xy=None):
     header = [
         "# Region file format: DS9 CARTA 2.0.0\n",
         ('global color=#2EE6D6 dashlist=8 3 width=2 ' +
-        'font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=0 ' +
+        'font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=1 ' +
         'edit=1 move=1 delete=1 include=1 source=1\n'),
         "FK5\n"
         ]
