@@ -288,7 +288,7 @@ def sorta(inp):
 
 
 def make_default_regions(bounds, size, wcs_ref, reg_file,
-    pixels=False, overwrite=True):
+    pixels=False, overwrite=True, shape="circle"):
     """
     Create some default regions given an image
     Algorithm
@@ -385,10 +385,18 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
                 
         sky = CirclePixelRegion(PixCoord(x, y), radius=size).to_sky(wcs)
 
-        world_coords.append(
-            "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
-        sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec, tag)
-        )
+        if shape == "circle":
+            world_coords.append(
+                "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
+            sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec, tag)
+            )
+        else:
+            world_coords.append(
+            "box({:.6f}, {:.6f}, {:.6f}\", {:.6f}\", 0) # tag={{{}}}".format(
+            sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec*2, sky.radius.arcsec*2, tag)
+            )
+
+
     snitch.info(f"{len(world_coords)} regions found")
     # Write the regions out
     reg_file += f"-size-{size}-default"
@@ -437,7 +445,7 @@ def read_regions_as_pixels(reg_file, wcs=None):
 
 
 def parse_valid_region_candidates(image, reg_file, noise_file, threshold, 
-    noise=None, overwrite=True):
+    noise=None, overwrite=True, shape="circle"):
     """
     Only store regions which are above the specified threshold
     Algorithm
@@ -469,9 +477,16 @@ def parse_valid_region_candidates(image, reg_file, noise_file, threshold,
         signal = region_flux_jybm(reg, image_data)
         if region_is_above_thresh(signal, noise, threshold=threshold):
             sky = reg.to_sky(wcs)
-            valids.append(
-            "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
-                sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec,
+
+            if shape == "circle":
+                valids.append(
+                "circle({:.6f}, {:.6f}, {:.6f}\") # tag={{{}}}".format(
+                    sky.center.ra.deg, sky.center.dec.deg, sky.radius.arcsec,
+                    ','.join(reg.meta["tag"])))
+            else:
+                valids.append(
+                "box({:.6f}, {:.6f}, {:.6f}\", {:.6f}\", 0) # tag={{{}}}".format(
+                sky.center.ra.deg, sky.center.dec.deg, sky.width.value, sky.height.value,
                 ','.join(reg.meta["tag"])))
 
     if len(valids) > 0:

@@ -256,7 +256,7 @@ def plot_spectra_singles(file_core, outfile, xscale="linear", ymin=None,
     # snitch.info(f"Regions with >4 data points in fracpol {data_points}")
 
 
-def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1):
+def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1, shape="circle"):
     """
     Plotting noise data above noise in the I image. Also overlays the regions
     on the output plot
@@ -325,8 +325,12 @@ def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1
 
         patches = []
         for choice in chosen:
-            x,y,r = np.array(np.round([*choice.center.xy, choice.radius]),dtype=int)
-            patches.append(mpatches.Circle((x,y), radius=r))
+            if shape == "circle":
+                x,y,r = np.array(np.round([*choice.center.xy, choice.radius]),dtype=int)
+                patches.append(mpatches.Circle((x,y), radius=r))
+            else:
+                x,y,= np.array(np.round([*choice.center.xy]),dtype=int)
+                patches.append(mpatches.Rectangle((x,y), width=choice.width, height=choice.height))
 
         
         ax.add_collection(PatchCollection(patches, edgecolor="indigo", facecolor="none", lw=0.8))
