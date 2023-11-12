@@ -352,14 +352,14 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
             label(mask, output=mask)
 
         mycoords, mxcoords = np.where(mask>0)
-        mcords = list(zip(mycoords, mxcoords))
+        mcords = np.array((mycoords, mxcoords)).T
         minx, maxx = mxcoords.min(), mxcoords.max()
         miny, maxy = mycoords.min(), mycoords.max()
         maxx_dim, maxy_dim = maxx, maxy
     else:
         snitch.info("Region file found for region bounds")
         mycoords, mxcoords = read_region_bounds(bounds, wcs_ref)
-        mcords = list(zip(mycoords, mxcoords))
+        mcords = np.array((mycoords, mxcoords)).T
         minx, maxx = mxcoords.min(), mxcoords.max()
         miny, maxy = mycoords.min(), mycoords.max()
         maxx_dim, maxy_dim = maxx, maxy
@@ -375,7 +375,6 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
     for _c, (y, x) in enumerate(cords, 1):
         if _c%300 == 0:
             snitch.info(f"Patience. We are at {_c}")
-            
         if (y,x) not in mcords:
             continue
         # tag = f"g{mask[y,x]}"
