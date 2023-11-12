@@ -23,7 +23,7 @@ from scrap.scraplog import snitch
 from scrap.arguments import parser
 from scrap.image_utils import (read_fits_image, read_fits_cube, region_flux_jybm,
     region_is_above_thresh, read_region_bounds,
-    read_regions_as_pixels, make_default_regions, make_noise_region_file,
+    read_regions_as_pixels, make_default_regions,
     parse_valid_region_candidates, write_regions, image_noise, get_wcs)
 from scrap.plotting import overlay_regions_on_source_plot
 
@@ -480,8 +480,6 @@ def step1_default_regions(reg_size, wcs_ref, bounds, threshold=1, rnoise=None):
     CURRENT_RFILE = make_default_regions(bounds, reg_size,
                         wcs_ref, RFILE, overwrite=OVERWRITE)
 
-    NRFILE = make_noise_region_file(name=NRFILE, reg_xy=None)
-
     overlay_regions_on_source_plot(
         CURRENT_RFILE, wcs_ref,
         rnoise or NRFILE, threshold)
@@ -578,7 +576,7 @@ def main():
         shutil.copy(opts.rfile, RFILE+".reg")
     
     if opts.nrfile is not None:
-        snitch.info(f"Region file: {opts.nrfile}")
+        snitch.info(f"Noise Region file: {opts.nrfile}")
         RDIR = make_out_dir(RDIR)
         NRFILE = fullpath(RDIR, "noise-region")
         shutil.copy(opts.nrfile, NRFILE+".reg")

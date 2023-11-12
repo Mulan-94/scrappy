@@ -243,8 +243,6 @@ def read_region_bounds(rfile, ref_image):
 
 
 
-
-
 def write_regions(name: str, regs: tuple, overwrite=True, reg_id=False):
     """
     reg_id: bool
@@ -399,40 +397,16 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
     return reg_file
 
 
-def make_noise_region_file(name=None, reg_xy=None):
+def make_noise_region_file(name=None):
     """
-    todo: autogenerate of source noise region
-    Write out a region file containing the noise region
-    reg_xy: str
-        the x and y coordinates and the region size of the noise region
-        Should be specified in the format: (x, y, size)
+    Perhaps in future:
+    1. Autogenerate some box region for noise
+    2. get coordinates and shape of that box
+    3. write those coordinates out to a reg file
+    4. return the name of the created file:
+    1.e # return os.path.splitext(name)[0]
     """
-    # using the pictor A default region coordinate HERE!
-
-    header = [
-        "# Region file format: DS9 CARTA 2.0.0\n",
-        ('global color=#2EE6D6 dashlist=8 3 width=2 ' +
-        'font="helvetica 10 normal roman" select=1 highlite=1 dash=0 fixed=1 ' +
-        'edit=1 move=1 delete=1 include=1 source=1\n'),
-        "FK5\n"
-        ]
-
-    if reg_xy is None:
-        reg_xy = "80.041875, -45.713452, 13.0000"
-        snitch.warning("The noise region in use is for Pictor A.")
-        snitch.warning(f"That is in WCS: {reg_xy}")
-        snitch.warning(f"If this is not the intended region coordinate, " +
-            "please specify this value in the function 'make_noise_region_file'")
-    
-    if name is None:
-        name = os.path.join(os.path.dirname(name), "noise-region.reg")
-    else:
-        name += ".reg"
-
-    with open(name, "w") as fil:
-        fil.writelines([f"{p}\n" for p in header+[f"circle({reg_xy}\")"]])
-        snitch.info(f"Noise region written: {name}")
-    return os.path.splitext(name)[0]
+    pass
 
 
 
