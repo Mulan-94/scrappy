@@ -641,9 +641,11 @@ def main():
     # For scrappy
     if opts.los_only or "l" in todo:
         help = "cubes image-dir ref-image mask noise-ref-image noise-region-file".split()
-        req_files = [opts.cubes or opts.image_dir, bounds or opts.rfile,
+        req_files = [bounds or opts.rfile,
                      opts.nrfile, wcs_ref, noise_ref]
+        req_files.extend(opts.cubes) if opts.cubes else ""
         req_files.append(opts.freq_file) if opts.cubes else ""
+
         if does_specified_file_exist(*req_files):
             snitch.info("All specified input files have been found")
  
