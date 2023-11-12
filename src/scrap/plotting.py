@@ -1,8 +1,12 @@
 import os
-import matplotlib.pyplot as plt
 import numpy as np
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.collections import PatchCollection
+
 from matplotlib import colors
+
 
 from utils.rmmath import lambda_sq, freq_sqrt
 from scrap.image_utils import (get_wcs, read_regions_as_pixels,
@@ -319,9 +323,13 @@ def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1
         ax.set_xlim(xmin-wiggle, xmax+wiggle)
         ax.set_ylim(ymin-wiggle, ymax+wiggle)
 
+        patches = []
         for choice in chosen:
             x,y,r = np.array(np.round([*choice.center.xy, choice.radius]),dtype=int)
-            ax.add_patch(plt.Circle((x,y), radius=r, color="indigo", fill=False, lw=0.5))
+            patches.append(mpatches.Circle((x,y), radius=r))
+
+        
+        ax.add_collection(PatchCollection(patches, edgecolor="indigo", facecolor="none", lw=0.8))
 
 
     fig.tight_layout()
