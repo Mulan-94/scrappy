@@ -217,29 +217,30 @@ def read_region_bounds(rfile, ref_image):
         snitch.info("We don't do lines here :), skipping")
         return
 
-    if isinstance(reg, RectangleSkyRegion):
-        # using a custom masker for rectangular regions because it gives
-        # better results!!! Do NOT change!
-        cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec,
-            wcs_ref=ref_image)
+    # if isinstance(reg, RectangleSkyRegion):
+    #     # using a custom masker for rectangular regions because it gives
+    #     # better results!!! Do NOT change!
+    #     cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec,
+    #         wcs_ref=ref_image)
 
-        reg = reg.to_pixel(wcs)
-        x_npix, y_npix = wcs.pixel_shape
+    #     reg = reg.to_pixel(wcs)
+    #     x_npix, y_npix = wcs.pixel_shape
         
-        w, h = np.ceil(np.array((int(reg.width), int(reg.height)))//2).astype(int)
+    #     w, h = np.ceil(np.array((int(reg.width), int(reg.height)))//2).astype(int)
         
-        minx, maxx = cx-w, cx+w+1
-        miny, maxy = cy-h, cy+h+1
-        ys = np.arange(miny, maxy)
-        xs = np.arange(minx, maxx)
-        cds = np.array(list(product(ys, xs)))
-        ys = cds[:,0]
-        xs = cds[:,1]
+    #     minx, maxx = cx-w, cx+w+1
+    #     miny, maxy = cy-h, cy+h+1
+    #     ys = np.arange(miny, maxy)
+    #     xs = np.arange(minx, maxx)
+    #     cds = np.array(list(product(ys, xs)))
+    #     ys = cds[:,0]
+    #     xs = cds[:,1]
 
-    else:
-        mask = gen_reg_mask(reg, wcs, wcs.pixel_shape)
-        ys, xs = np.where(mask>0)
-    return ys, xs
+    # else:
+    mask = gen_reg_mask(reg, wcs, wcs.pixel_shape)
+    return mask
+
+
 
 
 
@@ -283,6 +284,8 @@ def sorta(inp):
     val, ind = np.unique(inp, return_index=True)
     val = val[np.argsort(ind)]
     return val
+
+
 
 def make_default_regions(bounds, size, wcs_ref, reg_file,
     pixels=False, overwrite=True):
@@ -352,14 +355,13 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
             label(mask, output=mask)
 
         mycoords, mxcoords = np.where(mask>0)
-        mcords = np.array((mycoords, mxcoords)).T
         minx, maxx = mxcoords.min(), mxcoords.max()
         miny, maxy = mycoords.min(), mycoords.max()
         maxx_dim, maxy_dim = maxx, maxy
     else:
         snitch.info("Region file found for region bounds")
-        mycoords, mxcoords = read_region_bounds(bounds, wcs_ref)
-        mcords = np.array((mycoords, mxcoords)).T
+        mask = read_region_bounds(bounds, wcs_ref)
+        mycoords, mxcoords = np.where(mask>0)
         minx, maxx = mxcoords.min(), mxcoords.max()
         miny, maxy = mycoords.min(), mycoords.max()
         maxx_dim, maxy_dim = maxx, maxy
@@ -375,12 +377,12 @@ def make_default_regions(bounds, size, wcs_ref, reg_file,
     for _c, (y, x) in enumerate(cords, 1):
         if _c%300 == 0:
             snitch.info(f"Patience. We are at {_c}")
-        if (y,x) not in mcords:
+
+        if mask[y,x] == 0:
             continue
         # tag = f"g{mask[y,x]}"
         tag = "g1"
-    
-            
+                
         sky = CirclePixelRegion(PixCoord(x, y), radius=size).to_sky(wcs)
 
         world_coords.append(
