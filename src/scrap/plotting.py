@@ -280,14 +280,14 @@ def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1
     
     plt.close("all")
     fig, ax = plt.subplots(
-            figsize=(10, 10), ncols=1, nrows=3, sharex=True, sharey=True,
+            figsize=(10, 10), ncols=1, nrows=1, 
             gridspec_kw={"wspace":0, "hspace":0})
 
-    ax = ax.flatten()
-    snitch.info("Plotting selected regions over I (Q, U) images")
+    # ax = ax.flatten()
+    snitch.info("Plotting selected regions over I image")
     i_data = None
 
-    for _, im in enumerate("iqu"):
+    for _, im in enumerate("i"):
 
         now_image = ref_image.replace("i-mfs", f"{im}-mfs")
 
@@ -312,17 +312,17 @@ def overlay_regions_on_source_plot(reg_file, ref_image, noise_rfile, threshold=1
         xmax, ymax = np.max(lims, axis=0)
         wiggle = 50
         
-        ax[_].imshow(image_data, origin="lower", cmap="coolwarm",
+        ax.imshow(image_data, origin="lower", cmap="coolwarm",
         norm=colors.LogNorm(vmin=image_data.min(), vmax=image_data.max())
         # vmin=data.min(), vmax=data.max()
         ) 
-        ax[_].set_title(f"{im.upper()}; Only > t {threshold} x n {noise:.6f} in log")
-        ax[_].set_xlim(xmin-wiggle, xmax+wiggle)
-        ax[_].set_ylim(ymin-wiggle, ymax+wiggle)
+        ax.set_title(f"{im.upper()}; Only > t {threshold} x n {noise:.6f} in log")
+        ax.set_xlim(xmin-wiggle, xmax+wiggle)
+        ax.set_ylim(ymin-wiggle, ymax+wiggle)
 
         for choice in chosen:
             x,y,r = np.array(np.round([*choice.center.xy, choice.radius]),dtype=int)
-            ax[_].add_patch(plt.Circle((x,y), radius=r, color="indigo", fill=False, lw=0.5))
+            ax.add_patch(plt.Circle((x,y), radius=r, color="indigo", fill=False, lw=0.5))
 
 
     fig.tight_layout()
