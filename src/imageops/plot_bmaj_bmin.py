@@ -49,43 +49,33 @@ def read_cube_fits(imname, channels=None):
 
 
 def plotme(freqs, bmajs, bmins, outname, title="All freqs"):
+    chans = np.arange(freqs.size)
+
     snitch.info("Plotting beam dimensions")
-    fig, ax = plt.subplots(figsize=(16,9), ncols=2, sharex=True)
-    ax[0].plot(freqs, bmajs, "bo", markersize=4)
-    ax[0].axhline(bmajs.max(), linestyle="--", linewidth=1)
-    bm_max = np.argmax(bmajs)
-    maxs = freqs[bm_max]
-    #if maxs.size >= 1:
-    #    maxs = maxs[0]
-    ax[0].annotate(f"{bmajs.max():.3}", 
-        xy=(maxs, bmajs.max()), color="red")
-
     
-    ax[0].set_xlabel("Freq GHz")
-    ax[0].set_ylabel("BMAJ")
-    # ax[0].set_title(title)
-    ax[0].minorticks_on()
-    ax[0].grid(True)
-
-    ax[1].plot(freqs, bmins, "bo", markersize=4)
-    ax[1].axhline(bmins.max(), linestyle="--", linewidth=1)
-    ax[1].minorticks_on()
-    ax[1].grid(True)
+    fig, ax = plt.subplots(figsize=(16,9), ncols=1)
     
-    bm_max = np.argmax(bmins)
-    maxs = freqs[bm_max]
+    ax.plot(chans, bmajs, "o", markersize=8, color="tab:blue", alpha=0.7)
+    ax.set_xlabel("Channel numbers")
+    ax.set_ylabel("BMAJ [Deg]")
+    ax.minorticks_on()
+    ax.grid(True, axis="x")
+    ax.tick_params(axis='y', labelcolor="tab:blue")
 
-    ax[1].annotate(f"{bmins.max():.3}", 
-        xy=(maxs, bmins.max()), 
-        color="red")
-    
-    ax[1].set_xlabel("Freq GHz")
-    ax[1].set_ylabel("BMIN")
-    # ax[1].set_title(title)
+
+
+    ax2 = ax.twinx()
+    ax2.plot(chans, bmins, "o", markersize=8, color="tab:orange", alpha=0.7)
+    ax2.minorticks_on()
+
+    ax2.set_ylabel("BMIN [Deg]")
+    ax2.tick_params(axis='y', labelcolor="tab:orange")
 
     fig.tight_layout()
     snitch.info(f"Saving file at: {outname}")
     fig.savefig(outname)
+
+    return
 
 
 def get_params(pairs):
@@ -258,28 +248,35 @@ def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz",
 
     np.savetxt(ONAME, freqs[sel])
 
-    # chans = np.arange(bma.size)
-    freqs = np.arange(bma.size)
-    
+
+    chans = np.arange(bma.size)
+
     plt.close("all")
-    fig, ax = plt.subplots(figsize=(16, 9), ncols=2, nrows=1, squeeze=False,
-        sharex=True)
+    fig, ax = plt.subplots(figsize=(16, 9), ncols=1, nrows=1)
 
-    ax[0, 1].plot(freqs[sel], bmi[sel], "bo", alpha=0.5, markersize=5)
-    ax[0, 1].plot(freqs[not_sel], bmi[not_sel], "ro", alpha=0.5, markersize=5)
-    ax[0, 1].minorticks_on()
-    ax[0, 1].grid(True)
-    ax[0, 1].set_ylabel("BMIN")
-    # ax[0, 1].set_xlabel("Freq [GHz]")
-    ax[0, 1].set_xlabel("Channel Number")
+    ax.plot(chans[sel], bma[sel], "o", alpha=0.7, markersize=8, color="tab:blue")
+    ax.plot(chans[not_sel], bma[not_sel], "kx", alpha=0.8, markersize=8, label="Excluded")
+    ax.minorticks_on()
+    ax.grid(True, axis="x")
+    ax.set_ylabel("BMAJ [Deg]", color="tab:blue")
+    ax.set_xlabel("Channel Number")
+    ax.tick_params(axis='y', labelcolor="tab:blue")
 
-    ax[0, 0].plot(freqs[sel], bma[sel], "bo", alpha=0.5, markersize=5)
-    ax[0, 0].plot(freqs[not_sel], bma[not_sel], "ro", alpha=0.5, markersize=5)
-    ax[0, 0].minorticks_on()
-    ax[0, 0].grid(True)
-    ax[0, 0].set_ylabel("BMAJ")
-    # ax[0, 0].set_xlabel("Freq [GHz]")
-    ax[0, 0].set_xlabel("Channel Number")
+    ax2 = ax.twinx()
+
+
+    ax2.plot(chans[sel], bmi[sel], "o", alpha=0.7, markersize=8, color="tab:orange")
+    ax2.plot(chans[not_sel], bmi[not_sel], "kx", alpha=0.8, markersize=8, label="Excluded")
+    ax2.minorticks_on()
+    ax2.set_ylabel("BMIN [Deg]")
+    ax2.set_xlabel("Channel Number")
+    ax2.tick_params(axis='y', labelcolor="tab:orange")
+    ax.legend()
+
+    ax3 = ax.twiny()
+    ax3.plot(freqs[sel]/1e9, bmi[sel], "o", alpha=0)
+    ax3.set_xlabel("Freqs [GHz]")
+
     
     if prefix is None:
         ONAME = os.path.join(dump, "selected_beam_vs_freq.png")
