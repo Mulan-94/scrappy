@@ -12,7 +12,7 @@ def chan_width_wavelengths(center_freq: float, chan_width: float):
     """Equation 35
     Channel width in wavelengths
     """
-    cww = ((2 * c**2 * chan_width)/center_freq**2) \
+    cww = ((2 * c**2 * chan_width)/center_freq**3) \
         * (1 + 0.5 * (chan_width/center_freq)**2)
     return cww
 
@@ -31,14 +31,14 @@ simple_lsq = lambda x: (c/x)**2
 
 def lambda_sq(center_freq: float, chan_width: float):
     """Equation 34
-    Calculate the lambda squared value
+    Calculate the center frequency in lambda squared for a single channel
     """
     lsq = (c**2 / center_freq**2) * \
         (1 + ( 0.75 * (chan_width/center_freq)**2))
     return lsq
 
 def lambda_sq_err(n_chans: int, lambda_sq_0: float, lambda_sq: tuple):
-    """Equation 35
+    """Equation 53
     Error in the lambda squared
     """
     lam_sums = 0
@@ -141,8 +141,12 @@ def rmtf_resolution(lambda_sq_min: float, lambda_sq_max: float):
     """
     Equation 61
     Approximate FWHM of the RMSF
+
+    But changed by schnitzeler to 3.8/lambda^2
+    We use schnitzelers version
     """
-    msens = (2 * 3**0.5)/(lambda_sq_max - lambda_sq_min)
+    # msens = (2 * 3**0.5)/(lambda_sq_max - lambda_sq_min)
+    msens = 3.8/(lambda_sq_max - lambda_sq_min)
     return msens
 
 
