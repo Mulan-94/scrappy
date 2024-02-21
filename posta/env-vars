@@ -47,4 +47,4 @@ export VAR_STOKES="I Q U"
 
 
 # select whether to use the convolved images/cubes or not
-export VAR_CONV=false
+export VAR_CONV=true

@@ -1,6 +1,17 @@
 set -e
 
+
+command_exists() {
+    # Fucntion to check if a command is available
+    command -v "$1" >/dev/null 2>&1
+}
+
+
+
+
 welcome(){
+    # The help/welcome message
+    # Displays how to use this script
     help="
 | ===========================================================================\n|\n\
 | \t    Welcome to showrunner \n\
@@ -29,6 +40,9 @@ welcome(){
 }
 
 installRequiredSoftware(){
+    # Function to install the required python packages
+
+
     # check if we have the latest version of pip
     if [[ -n $(pip list --local --quiet 2>&1 | grep -i "upgrade pip") ]]
     then
@@ -76,7 +90,7 @@ initialiseEnvVarsForThisScript(){
 
 makeDirs(){
     echo -e "\n############################################################"
-    echo "Make the necessary directories"
+    echo "Make the necessary directories (the ones starting with DIR_ in 'env-vars')"
     echo -e "############################################################\n"
 
     # all variables for this script start with 'DIR_'
@@ -98,6 +112,7 @@ makeDirs(){
 
 
 selectGoodChannels(){
+    # Automatically select channels that seem Ok, from the input images
     
     # 1. Create my channel selections here
     if [[ ! -f selected-channels.txt ]]
@@ -114,7 +129,7 @@ selectGoodChannels(){
     
     # 2. copy those selected channels' images to some other directory
     echo -e "\n############################################################"
-    echo "copy relevant channels' images to this folder for IQUV"
+    echo "copy relevant channels' images to this folder for $VAR_STOKES"
     echo -e "############################################################\n"
     for n in ${sel[@]}
     	do
@@ -209,9 +224,15 @@ selectedChannels_Stack(){
     for s in $VAR_STOKES
         do
             echo "Make the selection cubes: ${s^^}"
-            images=$(ls -v $indir/*-$s-image.fits)
-            fitstool.py --stack=$outdir/${s,,}-$suffix.fits:FREQ $(echo $images)
-            echo "Stored at: $outdir"
+            
+            images=$(ls -v $indir/*-$s-image.fits 2>/dev/null) || true;
+            if [ -z "$images" ]
+            then
+                echo "Stokes ${s} single sub-band images not found. Skipping.";
+            else
+                fitstool.py --stack=$outdir/${s,,}-$suffix.fits:FREQ $(echo $images)
+                echo "Stored at: $outdir"
+            fi
         done
     return 0
 }
@@ -236,7 +257,14 @@ selectedChannels_CubeConvolve(){
     echo -e "\n############################################################"
     echo "Renaming output file from spimple because the naming here is weird"
     echo -e "############################################################\n"
-    rename.ul -- ".convolved.fits" ".fits" $DIR_CONV_CUBES/* || true
+    if command_exists rename; 
+    then
+        echo "Using rename command."
+        rename -- s/\.convolved\.fits/.fits/ $DIR_CONV_CUBES/* || true
+    elif command_exists rename.ul;
+    then 
+        rename.ul -- ".convolved.fits" ".fits" $DIR_CONV_CUBES/* || true
+    fi
 
 
     echo -e "\n############################################################"
@@ -275,11 +303,23 @@ selectedChannels_SinglesConvolve(){
 
     for im in $(ls -v $DIR_IMGS/*.fits)
     do
-        spimple-imconv -image $im -pp ${beam_dims[@]} -o $DIR_CONVIM/$(basename $im)
+        # cut -d. -f1 splits the basename using the dot (.) as the delimiter
+        # and selects the first field, effectively removing everything after
+        # the first dot
+        spimple-imconv -image $im -pp ${beam_dims[@]} -o $DIR_CONVIM/$(basename $im | cut -d. -f1)
     done
 
     rm $DIR_CONVIM/*.clean_psf*
-    rename.ul ".convolved.fits" "" $DIR_CONVIM/*
+
+    # rename weirdly named files
+    if command_exists rename; 
+    then
+        echo "Using rename command."
+        rename -- s/\.convolved\.fits/\.fits/ $DIR_CONVIM/* || true
+    elif command_exists rename.ul;
+    then 
+        rename.ul -- ".convolved.fits" ".fits" $DIR_CONVIM/* || true
+    fi
 
     # stack them
     selectedChannels_Stack $DIR_CONVIM $DIR_CONV_CUBES conv-image-cube
@@ -296,12 +336,16 @@ selectedChannels_SinglesConvolve(){
 
 copyMfsImages(){
     echo -e "\n############################################################"
-    echo "copy I MFS image reference image here"
+    echo "copy Stokes $VAR_STOKES MFS images"
     echo -e "############################################################\n"
     
-    cp $VAR_INPUT_IMAGE_DIR/*MFS-I-image.fits i-mfs.fits
-    cp $VAR_INPUT_IMAGE_DIR/*MFS-Q-image.fits q-mfs.fits
-    cp $VAR_INPUT_IMAGE_DIR/*MFS-U-image.fits u-mfs.fits
+    for s in ${VAR_STOKES[@]};
+    do
+        cp $VAR_INPUT_IMAGE_DIR/*MFS-$s-image.fits ${s,,}-mfs.fits
+        echo "Copied $s-MFS --> $VAR_INPUT_IMAGE_DIR/${s,,}-mfs.fits"
+    done
+
+    return 0;
 
 }
 
@@ -340,11 +384,6 @@ generateSpiMap(){
         fitstool.py --stack=$DIR_SEL_CUBES/i-$im-cube.fits:FREQ $(echo $images)
         done
 
-
-    # echo "Rename the convolved images"
-    # # Adding || tru so that the error here does not fail the entire program
-    # # see: https://stackoverflow.com/questions/11231937/bash-ignoring-error-for-a-particular-command
-    # rename.ul -- ".convolved.fits" ".fits" $DIR_CONV_CUBES/* || true
 
 
     echo -e "\n############################################################"
@@ -401,9 +440,9 @@ generateRmMap(){
 
 
 makeMasks(){
-    # Automatically create masks
+    # Automatically create a mask
     # arg1: str
-    #     Arguments to be passed to houdini
+    #     Arguments to be passed to sc-houdini; the mask maker
 
     local args=${1:="-h"}
 
@@ -568,6 +607,7 @@ main(){
     # ----------------------------------------------------------------------
     if $VAR_CONV
     then
+        echo "Using the convolved images/cubes"
         CUBES=$DIR_CONV_CUBES
         IMAGES=$DIR_CONVIM
     else
@@ -614,19 +654,16 @@ main(){
 
 LOGFILE="showrunner.log"
 
-# if [[ $1 = '-h' ]]
-# then
-#     # Display the help message
-#     welcome | tee -a $LOGFILE
-# elif [[ $1 = '-s' ]]
-# then
-#     # Allow functions to be run in solitude
-#     # e.g. bash showrunner.sh installRequiredSoftware
-#     "$@" | tee -a $LOGFILE
-# else
-#     # Run the entire pipeline; i.e run the entire main function
-#     main | tee -a $LOGFILE
-# fi
-
-
-"$@"
+if [[ $1 = '-h' ]]
+then
+    # Display the help message
+    welcome | tee -a $LOGFILE
+elif [[ $1 = '-run' ]]
+then
+    # Run the entire pipeline; i.e run the entire main function
+    main | tee -a $LOGFILE
+else
+    # Allow functions to be run in solitude
+    # e.g. bash showrunner.sh installRequiredSoftware
+    "$@" | tee -a $LOGFILE
+fi
