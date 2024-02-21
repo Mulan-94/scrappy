@@ -35,12 +35,17 @@ with polarvis: https://github.com/Mulan-94/polarvis\n""" + \
     parser.add_argument("-i", "--initialize", action="store_true", dest="initialize",
     help="Set up files required to run the showrunner. It will not run without those files")
 
+    parser.add_argument("-f", "--force", action="store_true", dest="overwrite",
+    help="""Force overwrite of the files required for showrunner in case they 
+    already exist in the current directory."""
+    )
+
     parser.add_argument("-p", "--pica", action="store_true", dest="pica",
     help="Initialise some pica files specifically")
     return parser
 
 
-def initialize(pica=False):
+def initialize(pica=False, overwrite=False):
     op_dir = os.path.join(os.path.dirname(__file__),  "..", "posta")
     work_dir = os.path.abspath(os.path.curdir)
 
@@ -54,16 +59,17 @@ def initialize(pica=False):
     
     print("\n")
     for fil in default_files:
-        if not os.path.exists(os.path.join(work_dir, fil)):
+        if not os.path.exists(os.path.join(work_dir, fil)) or overwrite:
             print(f"{fil:20} : not found. Copying to {work_dir}")
             copy(os.path.join(op_dir, fil), os.path.join(work_dir, fil))
         else:
-            print(f"{fil:20} : already exists, skipping")
+            print(f"""{fil:20} : already exists, skipping. 
+            Use the '-f' option to enforce an overwrite,""")
 
 def console():
     opts = parser().parse_args()
     if opts.initialize:
-        initialize(opts.pica)
+        initialize(opts.pica, overwrite=opts.overwrite)
     
     return
 

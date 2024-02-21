@@ -1,8 +1,50 @@
-export PRODS="products";
-export IMGS="relevant-images";
-export CONV_CUBES="$PRODS/conv-selection-cubes";
-export CONVIM="$IMGS-conv";
-export ORIG_CUBES="$PRODS/original-cubes";
-export SEL_CUBES="$PRODS/selection-cubes";
-export SPIS="$PRODS/spi-fitting";
-export STOKES="I Q U"
+# --------------------------------------------------------------------------
+#                              Directories
+# --------------------------------------------------------------------------
+# Where to place some of the output products
+export DIR_PRODS="products";
+
+
+# where to place the relevant images
+export DIR_IMGS="relevant-images";
+
+
+# Where to dump the convolved image cubes
+export DIR_CONV_CUBES="$DIR_PRODS/conv-selection-cubes";
+
+
+# Where to dump convolved images
+export DIR_CONVIM="$DIR_IMGS-conv";
+
+
+# Where to dumpe the full (unselected+selected) channels image cubes
+export DIR_ORIG_CUBES="$DIR_PRODS/original-cubes";
+
+
+# Where to store image cubes of the selected channels
+export DIR_SEL_CUBES="$DIR_PRODS/selection-cubes";
+
+
+# Where to store the spectral index fitter outputs
+export DIR_SPIS="$DIR_PRODS/spi-fitting";
+
+
+
+# Where to dump auto generated masks / where your masks are
+export DIR_MASKS="masks"
+
+
+
+# --------------------------------------------------------------------------
+#                               Tunable Variables
+# --------------------------------------------------------------------------
+
+# The directory that contains the input Stokes images
+export VAR_INPUT_IMAGE_DIR=".."
+
+# The Stokes images to be used.
+export VAR_STOKES="I Q U"
+
+
+# select whether to use the convolved images/cubes or not
+export VAR_CONV=false

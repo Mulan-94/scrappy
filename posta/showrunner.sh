@@ -14,7 +14,7 @@ welcome(){
 | \t1) Running everything at once  \n\
 | ---------------------------------------------------------------------------\n\
 \t1. Place this script in a sub-dir where your channelised images are \n\
-  \ti.e. the channelised images should be at '../' with respect to where\n\
+  \ti.e. the channelised images should be at '$VAR_INPUT_IMAGE_DIR/' with respect to where\n\
      \tthis script is \n\
 \t2. Make script executable as: 'chmod +x showrunner.sh' \n\
 \t3. Run the script as follows: \n\
@@ -29,12 +29,19 @@ welcome(){
 }
 
 installRequiredSoftware(){
-    # pip install -U pip
+    # check if we have the latest version of pip
+    if [[ -n $(pip list --local --quiet 2>&1 | grep -i "upgrade pip") ]]
+    then
+        echo "pip upgrade is required. Upgrading pip."
+        pip install -U pip
+    fi
+
     pkgs=("MontagePy" "Owlcat" "spimple")
 
     echo -e "\n############################################################"
     echo "Installing required packages if need be"
     echo -e "\n############################################################"
+
 
     for pkg in ${pkgs[@]}
         do 
@@ -52,27 +59,14 @@ installRequiredSoftware(){
 
 initialiseEnvVarsForThisScript(){
     echo -e "\n############################################################"
-    echo "We initialise some of the environment variables in env-vars"
+    echo "Initialise the environment variables in env-vars"
     echo -e "\n############################################################"
     if [[ ! -f env-vars ]]
     then
-    	echo "env-vars does not exist. Creating"
-    	ln -s $HOME/git_repos/misc_scripts_n_tools/env-vars
-    fi
-
-    source env-vars
-
-    if [[ -z $mask_dir ]]
-    then
-        export mask_dir=masks
-
-        if [[ ! -d $mask_dir ]]
-        then
-            mkdir -p $mask_dir
-            echo -e "Created mask directory: $mask_dir"
-        else
-            echo -e "Mask directory already exists:  $mask_dir"
-        fi
+        echo "File 'env-vars' does not exist. Please run 'scrappy -i'."
+    else:
+        source env-vars
+        echo "Evnironment variables initialised."
     fi
 
     return 0
@@ -82,9 +76,22 @@ initialiseEnvVarsForThisScript(){
 
 makeDirs(){
     echo -e "\n############################################################"
-    echo "Make these directories"
+    echo "Make the necessary directories"
     echo -e "############################################################\n"
-    mkdir -p $ORIG_CUBES $SEL_CUBES $CONV_CUBES $PRODS $SPIS $IMGS
+
+    # all variables for this script start with 'DIR_'
+    # find the initialised ones and create if necessary
+    showrunner_dirs=$(env | grep -E "^DIR_" | awk -F '=' '{print $1}');
+   
+    for sdir in ${showrunner_dirs[@]}; 
+    do
+        if [[ ! -d ${!sdir} ]]
+        then
+            echo "Creating directory: ${!sdir}"
+            mkdir -p ${!sdir}
+        fi
+    done
+
     return 0
 }
 
@@ -99,7 +106,7 @@ selectGoodChannels(){
         echo -e """Autoselect some valid channels. Should be stored in a file 
                 \r called selected-channels"""
         echo -e "############################################################\n"
-        sc-beam-plot --output ./ --prefix 00 --threshold 0.5 --auto-select ../
+        sc-beam-plot --output ./ --prefix 00 --threshold 0.5 --auto-select $VAR_INPUT_IMAGE_DIR/
     fi
 
     mapfile -t sel < selected-channels.txt; export sel;
@@ -111,7 +118,7 @@ selectGoodChannels(){
     echo -e "############################################################\n"
     for n in ${sel[@]}
     	do
-    		cp ../*-$n-{I,Q,U}-image.fits $IMGS
+    		cp $VAR_INPUT_IMAGE_DIR/*-$n-{I,Q,U}-image.fits $DIR_IMGS
     	done
 
     
@@ -122,7 +129,7 @@ selectGoodChannels(){
         echo -e """write out the selected freqs into a single file for easier work. 
             \r This is for use in the RM synth for wavelength"""
         echo -e "############################################################\n"
-        for im in $IMGS/*-I-image.fits
+        for im in $DIR_IMGS/*-I-image.fits
             do
                 # ensure that this is being appended Lexy !!!!!!
                 fitsheader -k CRVAL3 $im |  grep -i CRVAL3 >> frequencies.txt
@@ -142,9 +149,9 @@ selectGoodChannels(){
     echo -e "\n############################################################"
     echo -e """Save the names of the selected images"""
     echo -e "############################################################\n"
-    ls $IMGS/*-[0-9][0-9][0-9][0-9]*-image.fits > selected-freq-images.txt
+    ls $DIR_IMGS/*-[0-9][0-9][0-9][0-9]*-image.fits > selected-freq-images.txt
 
-    #Replacing all begins of strings here with ../
+    #Replacing all begins of strings here with $VAR_INPUT_IMAGE_DIR/
     sed -i 's/^/\.\.\//g' selected-freq-images.txt
 
     return 0
@@ -158,20 +165,29 @@ stackAllImages(){
     echo -e """Generating stokes cubes from channelised images"""
     echo -e "############################################################\n"
 
-    for s in $STOKES
+    for s in $VAR_STOKES
     do
         echo "make cubes from ALL the output images: ${s^^}"
         echo -e "---------------------------------------------------------------\n"
         
-        images=$(ls -v ../*-[0-9][0-9][0-9][0-9]-$s-image.fits)
-        fitstool.py --stack=$ORIG_CUBES/${s,,}-cube.fits:FREQ $(echo $images)
+        images=$(ls -v $VAR_INPUT_IMAGE_DIR/*-[0-9][0-9][0-9][0-9]-$s-image.fits)
+        fitstool.py --stack=$DIR_ORIG_CUBES/${s,,}-cube.fits:FREQ $(echo $images)
 
         if [[ ${s,,} = "i" ]]
         then
-            images=$(ls -v ../*-[0-9][0-9][0-9][0-9]-$s-model.fits)
-            fitstool.py --stack=$ORIG_CUBES/${s,,}-model-cube.fits:FREQ $(echo $images)
-            images=$(ls -v ../*-[0-9][0-9][0-9][0-9]-$s-residual.fits)
-            fitstool.py --stack=$ORIG_CUBES/${s,,}-residual-cube.fits:FREQ $(echo $images)
+            for im in "model" "residual";
+            do
+                images=$(ls -v $VAR_INPUT_IMAGE_DIR/*-[0-9][0-9][0-9][0-9]-$s-$im.fits 2>/dev/null) || true;
+            
+                if [ -z "$images" ]
+                then
+                    echo "Stokes ${s} $im images not found. Skipping.";
+                else
+                    echo "---============"
+                    fitstool.py --stack=$DIR_ORIG_CUBES/${s,,}-$im-cube.fits:FREQ $(echo $images) || true;
+                fi
+            done
+           
         fi
     done
 
@@ -181,8 +197,8 @@ stackAllImages(){
 
 selectedChannels_Stack(){
     # optional argument syntax: variable=${read_arg_in_position:-default_value}
-    local indir=${1:-$IMGS}
-    local outdir=${2:-$SEL_CUBES}
+    local indir=${1:-$DIR_IMGS}
+    local outdir=${2:-$DIR_SEL_CUBES}
     local suffix=${3:-"image-cube"}
 
     # print function information
@@ -190,7 +206,7 @@ selectedChannels_Stack(){
     echo "Running function: $FUNCNAME($@)"
     echo -e "############################################################\n"
     
-    for s in $STOKES
+    for s in $VAR_STOKES
         do
             echo "Make the selection cubes: ${s^^}"
             images=$(ls -v $indir/*-$s-image.fits)
@@ -210,23 +226,23 @@ selectedChannels_CubeConvolve(){
     echo -e "\n############################################################"
     echo "Convolve the cubes to the same resolution"
     echo -e "############################################################\n"
-    for s in $STOKES
+    for s in $VAR_STOKES
         do        
-            spimple-imconv -image $SEL_CUBES/${s,,}-image-cube.fits \
-                -o $CONV_CUBES/${s,,}-image-cube -pp ${beam_dims[@]}
+            spimple-imconv -image $DIR_SEL_CUBES/${s,,}-image-cube.fits \
+                -o $DIR_CONV_CUBES/${s,,}-image-cube -pp ${beam_dims[@]}
         done
 
 
     echo -e "\n############################################################"
     echo "Renaming output file from spimple because the naming here is weird"
     echo -e "############################################################\n"
-    rename.ul -- ".convolved.fits" ".fits" $CONV_CUBES/* || true
+    rename.ul -- ".convolved.fits" ".fits" $DIR_CONV_CUBES/* || true
 
 
     echo -e "\n############################################################"
     echo "Just check if the beam sizes are the same"
     echo -e "############################################################\n"
-    # sc-beam-plot --output ./ --threshold 0.5  $IMGS
+    # sc-beam-plot --output ./ --threshold 0.5  $DIR_IMGS
 
     return 0
 
@@ -240,7 +256,7 @@ selectedChannels_SinglesConvolve(){
     # 2. Stack all the convolved channel images to form image cubes
     # 3. Plot the beam sizes of the new convolved channelised images
 
-    mkdir -p $CONVIM
+    mkdir -p $DIR_CONVIM
 
     echo -e "\n############################################################"
     echo -e """Convolve each channelised image INDIVIDUALLY"""
@@ -249,7 +265,7 @@ selectedChannels_SinglesConvolve(){
     if [[ ! -f beam-dims.txt ]]
     then
         # read beam dimensions of the first available channel
-        fitsheader $IMGS/$(ls -v relevant-images/ | head -1) \
+        fitsheader $DIR_IMGS/$(ls -v relevant-images/ | head -1) \
         |   grep -i "bmaj \|bmin \|bpa " > beam-dims.txt
         sed -i "s/.*=\s*//g" beam-dims.txt
 
@@ -257,22 +273,22 @@ selectedChannels_SinglesConvolve(){
     # beam_dims=$(python -c "import numpy as np; cat = np.loadtxt('beam-dims.txt'); print(*cat)")
     mapfile -t beam_dims < beam-dims.txt
 
-    for im in $(ls -v $IMGS/*.fits)
+    for im in $(ls -v $DIR_IMGS/*.fits)
     do
-        spimple-imconv -image $im -pp ${beam_dims[@]} -o $CONVIM/$(basename $im)
+        spimple-imconv -image $im -pp ${beam_dims[@]} -o $DIR_CONVIM/$(basename $im)
     done
 
-    rm $CONVIM/*.clean_psf*
-    rename.ul ".convolved.fits" "" $CONVIM/*
+    rm $DIR_CONVIM/*.clean_psf*
+    rename.ul ".convolved.fits" "" $DIR_CONVIM/*
 
     # stack them
-    selectedChannels_Stack $CONVIM $CONV_CUBES conv-image-cube
+    selectedChannels_Stack $DIR_CONVIM $DIR_CONV_CUBES conv-image-cube
 
 
     echo -e "\n############################################################"
     echo "Just check if the beam sizes are the same"
     echo -e "############################################################\n"
-    sc-beam-plot --output ./ --prefix 01 $IMGS
+    sc-beam-plot --output ./ --prefix 01 $DIR_IMGS
 
     return 0
 }
@@ -283,9 +299,9 @@ copyMfsImages(){
     echo "copy I MFS image reference image here"
     echo -e "############################################################\n"
     
-    cp ../*MFS-I-image.fits i-mfs.fits
-    cp ../*MFS-Q-image.fits q-mfs.fits
-    cp ../*MFS-U-image.fits u-mfs.fits
+    cp $VAR_INPUT_IMAGE_DIR/*MFS-I-image.fits i-mfs.fits
+    cp $VAR_INPUT_IMAGE_DIR/*MFS-Q-image.fits q-mfs.fits
+    cp $VAR_INPUT_IMAGE_DIR/*MFS-U-image.fits u-mfs.fits
 
 }
 
@@ -317,18 +333,18 @@ generateSpiMap(){
         echo -e "---------------------------------------------------------------\n"
         for chan in ${sel[@]}
             do  
-                cp  ../*-$chan-I-$im.fits $IMGS
+                cp  $VAR_INPUT_IMAGE_DIR/*-$chan-I-$im.fits $DIR_IMGS
             done
 
-        images=$(ls -v $IMGS/*-I-$im.fits)
-        fitstool.py --stack=$SEL_CUBES/i-$im-cube.fits:FREQ $(echo $images)
+        images=$(ls -v $DIR_IMGS/*-I-$im.fits)
+        fitstool.py --stack=$DIR_SEL_CUBES/i-$im-cube.fits:FREQ $(echo $images)
         done
 
 
     # echo "Rename the convolved images"
     # # Adding || tru so that the error here does not fail the entire program
     # # see: https://stackoverflow.com/questions/11231937/bash-ignoring-error-for-a-particular-command
-    # rename.ul -- ".convolved.fits" ".fits" $CONV_CUBES/* || true
+    # rename.ul -- ".convolved.fits" ".fits" $DIR_CONV_CUBES/* || true
 
 
     echo -e "\n############################################################"
@@ -347,8 +363,8 @@ generateSpiMap(){
 
     # cw - channel weights, th-rms threshold factor, 
     # acr - add conv residuals, bm -  beam model
-    spimple-spifit -model $SEL_CUBES/i-model-cube.fits \
-        -residual $SEL_CUBES/i-residual-cube.fits -o $SPIS/spi-map -th 10 \
+    spimple-spifit -model $DIR_SEL_CUBES/i-model-cube.fits \
+        -residual $DIR_SEL_CUBES/i-residual-cube.fits -o $DIR_SPIS/spi-map -th 10 \
         -nthreads 32 -pb-min 0.15 -cw $wsums -acr -bm JimBeam -band l \
         --products aeikb -cf ${freqs[@]}
 
@@ -365,8 +381,8 @@ generateRmMap(){
     #   Prefix prepended to the outputs from this script. 
     #   May include the dump dir. Default is 'initial'.
     
-    # local prefix=${1:-"$PRODS/initial"}
-    # local mask=${2:-"$mask_dir/true_mask.fits"}
+    # local prefix=${1:-"$DIR_DIR_PRODS/initial"}
+    # local mask=${2:-"$DIR_MASKS/true_mask.fits"}
     local args=${1:-"-h"}
 
     # print function information
@@ -427,7 +443,7 @@ runScrappy(){
 
     local thresh=${1:-10}
     local regsize=${2:-3}
-    local scout=${3:-"$PRODS/scrappy-out"}
+    local scout=${3:-"$DIR_PRODS/scrappy-out"}
     local bokeh=${4:-false}
     local others=${5:-""}
 
@@ -506,19 +522,19 @@ requiredSetup(){
 #     # ---------------------------------------------------------------------
 #     # creating composite mask
 #     makeMasks "
-#         $PRODS/initial-clean-fdf-SNR.fits
-#         -o $mask_dir/fp_snr_mask.fits
+#         $DIR_PRODS/initial-clean-fdf-SNR.fits
+#         -o $DIR_MASKS/fp_snr_mask.fits
 #         -above 10
 #         "
     
 #     # imageXMask(inimage, mask, outimage)
-#     imageXMask $PRODS/initial-FPOL-at-max-lpol.fits \
-#         $mask_dir/fp_snr_mask.fits \
-#         $PRODS/masked-initial-FPOL-at-max-lpol.fits
+#     imageXMask $DIR_PRODS/initial-FPOL-at-max-lpol.fits \
+#         $DIR_MASKS/fp_snr_mask.fits \
+#         $DIR_PRODS/masked-initial-FPOL-at-max-lpol.fits
 
 #     makeMasks "
-#         $PRODS/masked-initial-FPOL-at-max-lpol.fits
-#         -o $mask_dir/fp_mask.fits
+#         $DIR_PRODS/masked-initial-FPOL-at-max-lpol.fits
+#         -o $DIR_MASKS/fp_mask.fits
 #         -above 0 -below 0.85
 #         "
 #     # ---------------------------------------------------------------------
@@ -543,23 +559,20 @@ main(){
     
     makeMasks "
         i-mfs.fits
-        -o $mask_dir/true_mask.fits
+        -o $DIR_MASKS/true_mask.fits
         -above 4e-3
         -rb pica_box_region.reg
         "
 
 
     # ----------------------------------------------------------------------
-    # select whether to use the convolved images/cubes or not
-    CONV=false
-
-    if $CONV
+    if $VAR_CONV
     then
-        CUBES=$CONV_CUBES
-        IMAGES=$CONVIM
+        CUBES=$DIR_CONV_CUBES
+        IMAGES=$DIR_CONVIM
     else
-        CUBES=$SEL_CUBES
-        IMAGES=$IMGS
+        CUBES=$DIR_SEL_CUBES
+        IMAGES=$DIR_IMGS
     fi
     # ----------------------------------------------------------------------
 
@@ -569,20 +582,20 @@ main(){
         -q $CUBES/q-image-cube.fits
         -u $CUBES/u-image-cube.fits
         -i $CUBES/i-image-cube.fits -ncore 45 -md 200
-        -o $PRODS/initial -mask $mask_dir/true_mask.fits -f frequencies.txt "
+        -o $DIR_PRODS/initial -mask $DIR_MASKS/true_mask.fits -f frequencies.txt "
 
     
     # create a mask for only where fpol SNR > 10
     makeMasks "
-        -o $mask_dir/fpol-snrmask.fits 
-        -above 10 $PRODS/initial-clean-fdf-SNR.fits"
+        -o $DIR_MASKS/fpol-snrmask.fits 
+        -above 10 $DIR_PRODS/initial-clean-fdf-SNR.fits"
 
 
 
     # signature
     # runScrappy(thresh, region_size, output_dir, boke_plots?, other_args)
-    runScrappy 50 3 $PRODS/scrap-outputs false \
-        "-m $mask_dir/fpol-snrmask.fits 
+    runScrappy 50 3 $DIR_PRODS/scrap-outputs false \
+        "-m $DIR_MASKS/fpol-snrmask.fits 
         -nrf pica_noise_region.reg 
         -idir $IMAGES"
 
@@ -590,8 +603,8 @@ main(){
     sc-depol $CUBES/i-image-cube.fits \
         $CUBES/q-image-cube.fits \
         $CUBES/u-image-cube.fits \
-        $PRODS/scrap-outputs/los-data/reg_1.npz \
-        $mask_dir/true_mask.fits
+        $DIR_PRODS/scrap-outputs/los-data/reg_1.npz \
+        $DIR_MASKS/true_mask.fits
 
     # generateSpiMap
 
@@ -601,10 +614,19 @@ main(){
 
 LOGFILE="showrunner.log"
 
-if [[ $1 = '-h' ]]
-then
-    welcome | tee -a $LOGFILE
-else
-    # Run this main function
-    main | tee -a $LOGFILE
-fi
+# if [[ $1 = '-h' ]]
+# then
+#     # Display the help message
+#     welcome | tee -a $LOGFILE
+# elif [[ $1 = '-s' ]]
+# then
+#     # Allow functions to be run in solitude
+#     # e.g. bash showrunner.sh installRequiredSoftware
+#     "$@" | tee -a $LOGFILE
+# else
+#     # Run the entire pipeline; i.e run the entire main function
+#     main | tee -a $LOGFILE
+# fi
+
+
+"$@"
