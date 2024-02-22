@@ -1,0 +1,64 @@
+site_name: Scrappy
+site_author: Lexy A. L. Andati
+
+repo_name: mulan-94/scrappy
+repo_url: https://github.com/Mulan-94/scrappy
+
+copyright: Copyright &copy; 2024 Lexy Andati
+
+
+theme:
+  name: "material"
+  # name: "dracula"
+  navigation_depth: 3
+
+nav:
+  - Home: index.md
+  - Scrappy: scrappy.md
+  - Tools:
+    - sc-beam-plot: sc-beam-plot.md
+    - sc-depol: sc-depol.md
+    - sc-houdini: sc-houdini.md
+    - sc-bokehplot: sc-bokehplot.md
+    - sc-ifit: sc-ifit.md
+    - sc-los: sc-los.md
+    - sc-losrm: sc-losrm.md
+    - sc-rmmap: sc-rmmap.md
+  - Pipeline:
+    - showrunner.sh: showrunner.md
+  - Changelog: changelog.md
+
+
+plugins:
+  - mkdocstrings:
+      # https://mkdocstrings.github.io/python/usage/#paths
+      handlers:
+        python:
+          paths: [src]
+          load_external_modules: false
+        shell:
+          paths: [posta]
+  - search
+  - autorefs
+  - mkdocs_pymdownx_material_extras
+  - minify:
+      minify_html: true
+  - git-revision-date-localized
+  - mermaid2
+
+ 
+
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+
+
+extra_javascript:
+  - javascripts/katex.js
+  - https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.7/katex.min.js
+  - https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.7/contrib/auto-render.min.js
+
+extra_css:
+  - https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.7/katex.min.css
+  - styles.css
+

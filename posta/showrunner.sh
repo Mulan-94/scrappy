@@ -17,21 +17,19 @@ welcome(){
 | \t    Welcome to showrunner \n\
 | \t'Together we run the show' ~ Kat DeLuna :) \n|\n\
 | =========================================================================== \n|\n\
-| Software used in this script requires Python > 3.8 \n\
+| Most software used in this script requires Python > 3.8 \n\
 | Please ensure they are installed \n\
 | Recommend running this in a virtual environment \n|\n\
 | --------------------------------------------------------------------------- \n\
 | \tInstructions \n\
-| \t1) Running everything at once  \n\
-| ---------------------------------------------------------------------------\n\
-\t1. Place this script in a sub-dir where your channelised images are \n\
-  \ti.e. the channelised images should be at '$VAR_INPUT_IMAGE_DIR/' with respect to where\n\
-     \tthis script is \n\
-\t2. Make script executable as: 'chmod +x showrunner.sh' \n\
-\t3. Run the script as follows: \n\
-\t\t ./run_most_rm_things location/of/mask/dir \n\
-\te.g \n \
-\t\t ./run_most_rm_things.sh /home/andati/pica/reduction/experiments/emancipation/masks-572\n\n\
+|  1) Tweak environment variables in env-var if need be
+|  2) This script contains functions that form the various steps of this pipeline.\n\
+|       To change inputs to the various software, modify the options in the specific functions.\n\
+|   3) showrunner.sh has three modes of operation: \n\
+|        i) Print the help function using './showrunner.sh -h'  \n\
+|        ii) Run the entire pipeline using './showrunner.sh -run'  \n\
+|        iii) Run specific function in this script using './showrunner.sh nameOfFunction'  \n\
+| Ensure that this script is executable using: 'chmod +x showrunner.sh' \n\
 | ---------------------------------------------------------------------------\n\
 "
 
