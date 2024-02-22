@@ -20,7 +20,7 @@ There are three options for running `showrunner.sh`:
 2. `./showrunner.sh -run`: to run the entire pipeline.
 
 The third option is to run the individual functions in the pipeline by themselves using the syntax 
-```shell
+```
 ./showrunner.sh functionName
 ```
 For example to run the 'makeDirs' function:
