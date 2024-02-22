@@ -1,4 +1,3 @@
-## sc-ifit
 
 Fit a simple taylor polynomial on Stokes I cube, generating a model I
 

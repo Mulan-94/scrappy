@@ -1,4 +1,4 @@
-## sc-los
+
 
 Autogenerate lines-of-sight and their corresponding data.
 

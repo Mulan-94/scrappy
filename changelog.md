@@ -1,1 +1,2 @@
-## Testing
+## V0.1.0
+- Initial release of scrappy

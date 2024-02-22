@@ -1,5 +1,3 @@
-## sc-beam-plot
-
 
 ### Help Menu
 ```

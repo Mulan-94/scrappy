@@ -1,4 +1,3 @@
-## sc-depol
 
 Create a depolarization ratio map
 

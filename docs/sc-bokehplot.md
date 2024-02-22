@@ -1,5 +1,3 @@
-## sc-bokehplot
-
 
 ### Help Menu
 ```

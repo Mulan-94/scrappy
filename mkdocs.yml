@@ -14,7 +14,6 @@ theme:
 
 nav:
   - Home: index.md
-  - Scrappy: scrappy.md
   - Tools:
     - sc-beam-plot: sc-beam-plot.md
     - sc-depol: sc-depol.md
@@ -51,6 +50,9 @@ plugins:
 markdown_extensions:
   - pymdownx.arithmatex:
       generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
 
 
 extra_javascript:

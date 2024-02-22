@@ -1,4 +1,4 @@
-## sc-houdini
+
 
 Create FITS masks
 
