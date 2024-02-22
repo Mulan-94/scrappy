@@ -280,7 +280,7 @@ def plot_los_rmdata(los, los_rm, odir):
 
     ax["top left"].errorbar(los.lambda_sq, los.fpol, yerr=los.fpol_err, 
                     fmt='o', ecolor="red")
-    ax["top left"].set_xlabel('$\lambda^2$ [m$^{-2}$]')
+    ax["top left"].set_xlabel(r'$\lambda^2$ [m$^{-2}$]')
     ax["top left"].set_ylabel('Fractional Polarisation')
     ax["top left"].minorticks_on()
     
@@ -303,7 +303,7 @@ def plot_los_rmdata(los, los_rm, odir):
                     fmt='o', ecolor="red", label="unwrapped angle")
     ax["top right"].plot(los.lambda_sq, reg_line, "g--",
         label=f"linear fit, slope: {res[0]:.3f}", lw=lw)
-    ax["top right"].set_xlabel('$\lambda^2$ [m$^{-2}$]')
+    ax["top right"].set_xlabel(r'$\lambda^2$ [m$^{-2}$]')
     ax["top right"].set_ylabel('Polarisation Angle')
     ax["top right"].legend()
     ax["top right"].minorticks_on()
@@ -320,7 +320,7 @@ def plot_los_rmdata(los, los_rm, odir):
         ax["bot"].plot(los_rm.depths, fclean, 'k',
             label=f'Clean Amp, RM {rm_val:.2f}')
         # ax["bot"].axvline(rm_val, label=f"{rm_val:.3f}")
-    ax["bot"].set_xlabel('Faraday depth [rad m$^{-2}$]')
+    ax["bot"].set_xlabel(f'Faraday depth [rad m$^{-2}$]')
     ax["bot"].set_ylabel('Farady Spectrum')
     ax["bot"].legend(loc='best')
     ax["bot"].minorticks_on()
@@ -332,9 +332,9 @@ def plot_los_rmdata(los, los_rm, odir):
         snr_idx = np.argmax(los.snr)
         fig.suptitle(
             # f"(||P|| : P$_{{err}}$) SNR$_{{max}}$ = {np.max(los.snr):.2f} " +
-            f"(I$_{{los}}$ : I$_{{global\_rms}}$) SNR$_{{max}}$ = {np.max(los.snr):.2f} " +
+           rf"(I$_{{los}}$ : I$_{{global\_rms}}$) SNR$_{{max}}$ = {np.max(los.snr):.2f} " +
             f"@ chan = {los.freqs[snr_idx]/1e9:.2f} GHz " +
-            f"and $\lambda^{{2}}$ = {los.lambda_sq[snr_idx]:.2f}")
+            rf"and $\lambda^{{2}}$ = {los.lambda_sq[snr_idx]:.2f}")
     fig.tight_layout()
     fig.savefig(ofile)
     
