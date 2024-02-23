@@ -1,3 +1,7 @@
+.. raw:: html
+
+    <p align="center"><img style="max-width:50%" src="docs/assets/logo.png"></p>
+    
 Overview
 --------
 ``Scrappy`` is a collection of tools used to generate Faraday spectra for various 
