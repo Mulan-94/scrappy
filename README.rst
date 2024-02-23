@@ -34,7 +34,7 @@ Its help is accessible as: ``./showrunner -h``. There is additionally an option 
 
 .. code-block:: bash
 
-    scrappy - h
+    scrappy -h
 
 All these scripts are in use within the `showrunner`. They are:
 

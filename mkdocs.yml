@@ -11,6 +11,8 @@ theme:
   name: "material"
   # name: "dracula"
   navigation_depth: 3
+  logo: assets/logo.png
+  favicon: assets/logo.png
 
 nav:
   - Home: index.md
@@ -64,11 +66,11 @@ markdown_extensions:
 
 
 extra_javascript:
-  - javascripts/katex.js
+  - javascript/katex.js
   - https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.7/katex.min.js
   - https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.7/contrib/auto-render.min.js
 
 extra_css:
   - https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.7/katex.min.css
-  - styles.css
+  - css/styles.css
 
