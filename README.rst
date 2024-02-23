@@ -1,4 +1,6 @@
-``scrappy`` is a collection of tools used to generate Faraday spectra for various 
+Overview
+--------
+``Scrappy`` is a collection of tools used to generate Faraday spectra for various 
 independent lines of sight across an extragalactic source. 
 
 At its tail end, it generates plots to be used with PolarVis:
@@ -46,6 +48,21 @@ All these scripts are in use within the `showrunner`. They are:
 Each of the scripts has a help text that is accessible via the `-h` flag. 
 Please consult that for more information on the parameters required to run the individual scripts.
 
+------------------
+
+Documentation
+-------------
+
+The documentation for this repository is at:
+
+https://mulan-94.github.io/scrappy/
+
+It is still under construction and is bound undergo frequent updates.
+
+------------------
+
+Addendum
+--------
 This project began as a custom script for Pictor A field but can now support any field provided a 
 source mask is given. Parts of the rm-synthesis tools availed in this script evolved from 
 those by Lerato Baidoo @sebokolodi and have been modified to suit our needs.
