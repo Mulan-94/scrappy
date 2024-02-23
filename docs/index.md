@@ -1,5 +1,10 @@
 # Welcome to scrappy's documentation :fontawesome-regular-face-smile:
 
+
+<p align="center"><img style="max-width:50%" src="./assets/logo.png"></p>
+
+------
+
 Scrappy is a collection of tools used to generate Faraday spectra for various 
 independent lines of sight across an extragalactic source. At its tail end, Scrappy generates plots to be used with [PolarVis](https://github.com/Mulan-94/polarvis), an interactive, web-based visualisation tool that displays RM-synthesis data products corresponding to individual lines-of-sight.
 

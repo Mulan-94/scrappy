@@ -1,5 +1,15 @@
+### Introduction
+
+<!-- ------
+### Example -->
 
 
+------
+### Output
+
+
+
+------
 ### Help Menu
 ```
 usage: sc-rmmap [-h] [-q QFITS] [-u UFITS] [-i IFITS] [-f FREQ] [-ncore NUMPROCESSOR] [-mask MASKFITS] [-o PREFIX] [-niters NITERS] [-md MAX_DEPTH] [--depth-step DEPTH_STEP] [-debug] [-snr SNR]

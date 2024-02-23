@@ -341,7 +341,7 @@ def clean_header(hdr):
 
 def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-map"):
     """
-    Calculate the depolarization ration
+    Calculate the depolarization ratio
 
     Parameters
     ----------
@@ -350,6 +350,10 @@ def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-m
     e_file: str
         Name of the file containing errors. This is found in the file generated
         from scrappy's 'sc-los' tool and is a numpy pickle file.
+    mask: str
+        Name of mask to use while calculating depolarisation ratio
+    output: str
+        Name of output depolarisation ratio map        
 
     Returns
     -------

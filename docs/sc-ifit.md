@@ -1,8 +1,29 @@
+### Introduction
 
-Fit a simple taylor polynomial on Stokes I cube, generating a model I
+This fits a simple taylor polynomial on Stokes $\mathit{I}$ cube, generating a model $\mathit{I}$.
 
 
+<!-- ------
+### Example -->
+
+
+<!-- ------
+### Output -->
+
+
+------
 ### Help Menu
+
+The help menu is available using the command:
+
+```
+sc-ifit -h
+```
+
+which results in the output below. However, as the tool is under active development, the help menu may change in the future and should be **checked before use using the help command** after installation.
+
+
+
 ```
 usage: sc-ifit [-h] [-mask MASK] [-ex EXCLUDE] [-u] [-deg DEG] [-o ODIR] cube freqs
 
