@@ -8,20 +8,22 @@ from dataclasses import dataclass
 
 @dataclass
 class SnitchSettings:
-    LOG_LEVEL: "info"
-    LOG_DIR: "."
-    LOG_FILE_NAME: "scraplog"
+    LOG_LEVEL: str = "info"
+    LOG_DIR: str = "."
+    LOG_FILE_NAME: str = "scraplog"
 
 logger_vars = SnitchSettings()
 
 
-CONSOLE_LOG_FORMATTER = logging.Formatter(
-        datefmt='%H:%M:%S %d.%m.%Y',
-        fmt="%(asctime)s : %(message)s")
+# CONSOLE_LOG_FORMATTER = dict(
+#         class="logging.Formatter",
+#         datefmt='%H:%M:%S %d.%m.%Y',
+#         fmt="%(asctime)s : %(message)s")
 
-FILE_LOG_FORMATTER = logging.Formatter(
-        datefmt='%H:%M:%S %d.%m.%Y',
-        fmt="%(asctime)s : %(levelname)s - %(message)s")
+# FILE_LOG_FORMATTER = dict(
+#     class = logging.Formatter,
+#     datefmt='%H:%M:%S %d.%m.%Y',
+#     fmt="%(asctime)s : %(levelname)s - %(message)s")
 
 
 DEFAULT_CONFIG = {
@@ -30,18 +32,28 @@ DEFAULT_CONFIG = {
         'standard': {
             'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
         },
+        'consolelog':{
+            "class": "logging.Formatter",
+            "datefmt": '%H:%M:%S %d.%m.%Y',
+            "fmt": "%(asctime)s : %(message)s"
+        },
+        'filelog':{
+            "class" :  "logging.Formatter",
+            "datefmt": '%H:%M:%S %d.%m.%Y',
+            "fmt": "%(asctime)s : %(levelname)s - %(message)s"
+        }
     },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
             'level': 'INFO',
-            'formatter': CONSOLE_LOG_FORMATTER,
+            'formatter': "consolelog",
             'stream': 'ext://sys.stdout',
         },
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'level': 'WARNING',
-            'formatter': FILE_LOG_FORMATTER,
+            'formatter': "filelog",
             'filename': Path(os.environ.get(
                 logger_vars.LOG_DIR, '.')) / f"{logger_vars.LOG_FILE_NAME}.log",
             'maxBytes': 10485760,  # 10MB

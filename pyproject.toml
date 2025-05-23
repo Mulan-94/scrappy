@@ -41,7 +41,7 @@ classifiers = [
 [project.scripts]
 sc-los = "scrap.scrappy:console"
 sc-losrm = "rmsynthesis.rm_synthesis:console"
-sc-rmmap = "rmsynthesis.rmmap_x2:console"
+sc-rmmap = "scrappy.rmsynthesis.rmmap_x2:console"
 sc-bokehplot = "bkplots.plot_bk:console"
 sc-ifit = "imageops.new_fit:console"
 sc-beam-plot = "imageops.plot_bmaj_bmin:console"
@@ -74,15 +74,18 @@ casa = ["casatasks"]
 
 
 [tool.setuptools]
-package-dir = {"" = "src/scrappy"}
-packages = [
-    "bkplots",
-    "imageops",
-    "rmsynthesis",
-    "scrap",
-    "utils"
-]
+package-dir = {"scrappy" = "src/scrappy"}
+#packages = [
+    #"scrappy",
+    #"bkplots",
+    #"imageops",
+    #"rmsynthesis",
+    #"scrap",
+    #"utils"
+#]
 
+[tool.setuptools.packages.find]
+where = ["src"]
 
 
 [tool.black]

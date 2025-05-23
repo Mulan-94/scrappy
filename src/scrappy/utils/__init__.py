@@ -2,7 +2,7 @@
 # import utils.mathutils as mathutils
 # import utils.rmmath as rmmath
 
-from utils.logger import configure_logger
+from scrappy.utils.logger import configure_logger
 
 
 # Good references
