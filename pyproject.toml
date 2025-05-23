@@ -15,8 +15,7 @@ authors = [
 ]
 description = "Generate polarimetric spectra on independent lines of sight across a source"
 readme = "README.rst"
-license = "MIT"
-license-files = ["LICENSE"]
+license = {file = "LICENSE"}
 
 
 dependencies = [ 
