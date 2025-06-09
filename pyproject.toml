@@ -43,9 +43,7 @@ dev = [
     "pytest-mock>=3.10.0",
     "pdbpp",
     "coverage[toml]>=7.0.0",
-    "black>=23.0.0", # code formater
-    "isort>=5.12.0", # import sorter
-    "flake8>=6.0.0", # linter coding style violations checker
+    "ruff",
     "mypy>=1.0.0", # check type hints and catche type-related bugs
 ]
 test = [
@@ -170,7 +168,44 @@ package-dir = {"scrappy" = "src/scrappy"}
 where = ["src"]
 
 
-[tool.black]
+[tool.ruff]
+# Same as Black
 line-length = 82
-target-version = ['py37']
+target-version = "py38"
+indent-width = 4
 
+
+[tool.ruff.lint]
+# Enable rule categories
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+
+# Ignore specific rules
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+# Exclude directories
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.lint.isort]
+known-first-party = ["scrappy"]
+combine-as-imports = true
+
+
+[tool.ruff.format]
+# Like Black
+quote-style = "double"
+indent-style = "space"
