@@ -1,21 +1,27 @@
 import argparse
-import configparser
+import tomllib
 import os
 from shutil import copy
 
+import importlib.metadata
+
 from argparse import RawTextHelpFormatter
 
-__version__ = "0.1.0"
+__version__ = importlib.metadata.version("scrappy")
+
+from ipdb import set_trace
+
+set_trace()
 
 def get_console_scripts():
-    config = configparser.ConfigParser()
-    config.read_file(open(os.path.join(os.path.dirname(__file__), "..", r"setup.cfg")))
+    """Retrieve the console scripts defined in pyproject.toml"""
+    config = tomllib.load(open(
+        os.path.join(os.path.dirname(__file__), "../..", "pyproject.toml"),
+        "rb"))
 
-    scripts = dict([
-        tuple(_.split("=")) for _ in 
-        config.get("options.entry_points", "console_scripts").split("\n") if len(_)>0])
+    scripts = list(config["project"].get("scripts").keys())
     
-    return list(scripts.keys())
+    return scripts
 
 
 def parser():

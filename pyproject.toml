@@ -13,7 +13,7 @@ authors = [
 ]
 description = "Generate polarimetric spectra on independent lines of sight across a source"
 license = {file = "LICENSE"}
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 readme = "README.rst"
 version = "0.2.0"
 classifiers = [
@@ -56,15 +56,15 @@ test = [
 
 
 [project.scripts]
-sc-los = "scrap.scrappy:console"
-sc-losrm = "rmsynthesis.rm_synthesis:console"
+sc-los = "scrappy.scrap.xcrappy:console"
+sc-losrm = "scrappy.rmsynthesis.rm_synthesis:console"
 sc-rmmap = "scrappy.rmsynthesis.rmmap_x2:console"
-sc-bokehplot = "bkplots.plot_bk:console"
-sc-ifit = "imageops.new_fit:console"
-sc-beam-plot = "imageops.plot_bmaj_bmin:console"
-sc-houdini = "imageops.simple_mask:console"
-scrappy = "main:console"
-sc-depol = "rmsynthesis.rmmap_x2:depol_shim"
+sc-bokehplot = "scrappy.bkplots.plot_bk:console"
+sc-ifit = "scrappy.imageops.new_fit:console"
+sc-beam-plot = "scrappy.imageops.plot_bmaj_bmin:console"
+sc-houdini = "scrappy.imageops.simple_mask:console"
+scrappy = "scrappy.main:console"
+sc-depol = "scrappy.rmsynthesis.rmmap_x2:depol_shim"
 
 
 
@@ -73,16 +73,6 @@ Repository = "https://github.com/Mulan-94/scrappy.git"
 Documentation = "https://mulan-94.github.io/scrappy/"
 Issues = "https://github.com/Mulan-94/scrappy"
 
-
-
-[options]
-packages = [
-    "bkplots",
-    "imageops",
-    "rmsynthesis",
-    "scrap",
-    "utils"
-]
 
 
 # configuring pytest
@@ -162,10 +152,11 @@ directory = "htmlcov"
 
 
 [tool.setuptools]
-package-dir = {"scrappy" = "src/scrappy"}
+package-dir = {"" = "src"}
 
-[tool.setuptools.packages.find]
-where = ["src"]
+
+# [tool.setuptools.packages.find]
+# where = ["src"]
 
 
 [tool.ruff]
