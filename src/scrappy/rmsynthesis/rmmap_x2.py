@@ -13,21 +13,174 @@ import warnings
 
 import numpy as np
 
-from astropy.io import fits
-from scipy import signal
 from concurrent import futures
 from functools import partial
 
 from scrappy.utils.rmmath import frac_polzn_error, frac_polzn, linear_polzn
+from scrappy.logging.config import configure_logger
+from scrappy.utils.genutils import make_out_dir, read_npz
+from scrappy.utils.termcolours import avail_color_functions
+# from scrappy.logging.config import setup_logging
 
-# from scrappy.utils.logger import logging, LOG_FORMATTER, setup_streamhandler
 
-# snitch = logging.getLogger(__name__)
-# snitch.addHandler(setup_streamhandler())
-# snitch.setLevel("INFO")
+snitch = configure_logger(level="DEBUG")
 
-from scrappy.logging.config import setup_logging
-snitch = setup_logging()
+
+from ipdb import set_trace
+
+
+def import_heavy_modules():
+    """Import heavy modules only when needed to reduce startup time."""
+    global fits, signal
+    from astropy.io import fits
+    from scipy import signal
+
+    # make the colouring functions available
+    globals().update(avail_color_functions())
+    return
+
+
+def make_template_header(fname):
+    snitch.info(f"Creating template FITS header using the header from: {bold_blue(fname)}")
+    header = fits.getheader(fname)
+
+    important_keys = [
+        'SIMPLE', 'BITPIX', 'NAXIS', 'NAXIS1', 'NAXIS2', 'EXTEND', 'BUNIT','BMAJ','BMIN','BPA','EQUINOX','BTYPE','TELESCOP',
+        'OBSERVER','OBJECT','ORIGIN',"SPECSYS","DATE-OBS","WSCDATAC",
+        "WSCVDATE","WSCVERSI"
+    ]
+    extra = []
+    for i in range(1, 4):
+        for key in ['CTYPE', 'CRPIX', 'CRVAL', 'CDELT', 'CUNIT']:
+            if f"{key}{i}" in "CRVAL3 CDELT3".split():
+                continue
+            extra.append(f"{key}{i}")
+    important_keys.extend(extra)
+
+    template_header = header.fromkeys(important_keys)
+    template_header.update({key: header.get(key) for key in important_keys})
+    template_header.update(dict(NAXIS=3, BTYPE=None, BUNIT=None, CUNIT3=None))
+    template_header.add_comment("Made by scrap.py")
+    template_header.add_comment("https://www.lexyandati.com/scrappy/sc-rmmap/")
+
+    snitch.debug("Template FITS header created")
+    return template_header
+
+
+def make_template_image(oname, header, data=None, dtype=float):
+    snitch.debug("Creating output image")
+    if data is None:
+        nx, ny = [header.get(k) for k in "NAXIS1 NAXIS2".split()]
+        data = np.empty((nx,ny), dtype=dtype)
+    hdu = fits.PrimaryHDU (data=data, header=header)
+    hdu.writeto(oname, overwrite=True)
+    snitch.info(f"Successfully initialised image: {bold_green(oname)}")
+    return
+
+
+def read_image_cube(fname):
+
+    chunk_size = 1024
+
+    snitch.info(f"Reading image cube: {fname}")
+    # image cube is probably 4-d
+    xim_dataset = xf.xds_from_fits(fname, 
+        chunks={i: chunk_size for i in range(2,4)})[0].squeeze()
+
+    return xim_dataset
+
+
+def check_file(filename):
+    """Valdidate that the inputed files exist"""
+    try:
+        is_valid = os.path.isfile(filename)
+        snitch.debug(f"{filename} is available")
+    except:
+        is_valid = False
+        snitch.error(f"{bold_red(filename)} was not found. Please check the directory again")
+    return is_valid
+
+
+def validate_required_input_files(args):
+    snitch.debug("Validating input files")
+    reqs = "qfits ufits ifits freq maskfits".split()
+    invalid = []
+    for fil in reqs:
+        if not check_file(args.__getattribute__(fil)):
+            invalid.append(f"{bold_red("Missing")}: {args.__getattribute__(fil)}")
+    if args.prefix is not None:
+        if os.path.sep in args.prefix:
+            # then this is a directory with a prefix name, reinitialize
+            output_dir = make_out_dir(os.path.dirname(args.prefix))
+        else:
+            # interpret as just a prefix
+            output_dir = os.path.join(os.path.curdir, args.prefix)
+            args.prefix = output_dir
+
+    if len(invalid) > 0:
+        snitch.info(f"{len(invalid)} files have not been found")
+        for inv in invalid:
+            snitch.info(invalid)
+        sys.exit()
+    snitch.info(f"All required input files {bold_green('exist')}")
+    return
+
+
+def read_freq_file(filename):
+    _, ext = os.path.splitext(filename)
+
+    reader = {
+        ".txt": np.loadtxt,
+        ".dat": np.loadtxt,
+        ".npy": read_npz,
+        ".npz": read_npz
+    }
+
+    try:
+        freqs = reader[ext.lower()](filename)
+
+        if isinstance(freqs, dict):
+            snitch.info(f"The following keys were found in frequency file")
+            snitch.info("{}".format(bold_blue(list(freqs.keys()).join(', '))))
+            snitch.info(f"Using {freqs.get(freqs.keys()[0])}")
+            freqs = freqs.get(freqs.keys()[0])
+        elif isinstance(freqs, tuple):
+            freqs = np.array(freqs)
+
+    except ValueError:
+        snitch.error(f"Unable to reaa {red_bold(filename)}. Please check on it")
+        sys.exit()
+    return freqs
+    
+
+def prep_output_files(template_file, prefix):
+    ofiles = {
+        "p0_hdr": dict(ctype='p', unit='ratio'),
+        "PA_hdr": dict(ctype='PA', unit='radians'),
+        "RM_hdr": dict(ctype='RM', unit='rad/m^2'),
+        "pf_hdr": dict(ctype='FPOL', unit='x100%'),
+        "lp_hdr": dict(ctype='LPOL', unit='unit'),
+        "snr_hdr": dict(ctype='SNR', unit='unit'),
+    }
+
+    temp_header = make_template_header(template_file)
+    for ofile in ofiles:
+        fname = os.path.join(f"{prefix}-{ofile}.fits")
+
+        snitch.debug(f"Setting header units for file: {bold_cyan(ofile)}")
+        snitch.debug(", ".join([f"{green(k)}: {v}" for k, v in ofiles[ofile].items()]))
+        
+        temp_header.update(ofiles[ofile])
+        make_template_image(fname, temp_header)
+        ofiles[ofile] = fname
+    
+    return ofiles
+
+
+
+
+# ---------------------------- End of New Functions ------------------------
+
 
 def faraday_to_lambda(lam2, phi_range, pol_lam2):
 
@@ -251,31 +404,37 @@ def call_fitting(args, wavelengths=None, max_depth=500, niters=100, phi_step=1, 
     wave_sq =  wavelengths[ind_nans]
 
     # RM-synth and RM-CLEAN on this single pixel. We pass in the complex polarised data
-    phi_range, fcleaned, fdirty, fwhm = rm_synthesis(wave_sq, single_pxl_poln,
+    phi_range, fcleaned, fdirty, fwhm = rm_synthesis(
+        wave_sq, single_pxl_poln,
         phi_max=max_depth, phi_step=phi_step, niter=niters, gain=0.1, plot=False, derotate=derotate) 
     
+    #6
     snr_clean = peak_snr(fcleaned, fwhm, phi_range)
     # snr_dirty = peak_snr(fdirty, fwhm, phi_range)
     # return nans for pixel if snr is less than 10
     # if snr_clean < 10:
     #     return [np.nan]*6 + [snr_clean]
 
+    #3 is fcleaned(complex)
     abs_fclean = np.abs(fcleaned)
 
     # get the peak index of the clean faraday spectra
     peak_idx =  np.where(abs_fclean == abs_fclean.max())[0][0]
 
     # get the depth at which RM is peak. Is this the estimated RM?
+    #2
     peak_depth = phi_range[peak_idx]
 
     # get the peak complex fclean
     peak_complex_rm = fcleaned[peak_idx]
 
     #this gives the estimated intrinsic fractional polarisation??
+    #0
     peak_rm_amp = np.abs(peak_complex_rm)
 
     # get the polarisation angle at the peak fday spectrum (intrinsic fpol?)
     # of that component. Note that this is from the cleaned FDF
+    #1
     pol_angle = 0.5 * np.arctan2(peak_complex_rm.imag, peak_complex_rm.real)
 
     # Trying to get the frac pol at max polarised intensity for this x,y pixel
@@ -283,11 +442,13 @@ def call_fitting(args, wavelengths=None, max_depth=500, niters=100, phi_step=1, 
     nfp = fp_data[:, x, y]
 
     # get location of peak polzn intensity
+    #5
     peak_lpol = np.abs(single_pxl_poln).max()
     # max_pol_idx = np.where(np.abs(single_pxl_poln)==peak_lpol)[0][0]  
     # snitch.info(f"x: {y}, y:{x}, max polzn intensity @ chan: {max_pol_idx}")
 
     # take fpol at the highest frequency
+    #4
     peak_fpol = nfp[-1]
     
     return peak_rm_amp, pol_angle, peak_depth, abs(fcleaned), peak_fpol, peak_lpol, snr_clean
@@ -463,19 +624,20 @@ def arg_parser():
 def main():
     args = arg_parser()
 
+    # prevent loading on console help
+    import_heavy_modules()
+
     # making these global because of multiprocess non-sharing.
     # Global variables can not be modified and shared between different processes
     global pdata, fp_data, snr
+      
+    validate_required_input_files(args)
+    frequencies = read_freq_file(args.freq)
+    output_files = prep_output_files(args.qfits, args.prefix)
 
-    # snitch = configure_logger(".")
-    
+
     snr = args.snr
-    try:
-        frequencies = np.loadtxt(args.freq)
-    except ValueError:
-        snitch.error(">>> Problem found with frequency file. It should be a text file")
-        sys.exit(">>> Exiting. See log file 'turbo-rm.log'")
-    
+ 
 
     wavelengths =  (299792458.0/frequencies)**2 
     qdata, qhdr = read_data(args.qfits) # run Q-cube 
