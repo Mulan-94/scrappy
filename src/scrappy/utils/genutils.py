@@ -5,11 +5,6 @@ from time import perf_counter
 
 import numpy as np
 
-from utils.logger import LOG_FORMATTER, setup_streamhandler, logging
-
-snitch = logging.getLogger(__name__)
-snitch.setLevel("INFO")
-snitch.addHandler(setup_streamhandler())
 
 def make_out_dir(dir_name, delete_if_exists=False):
     if os.path.isdir(dir_name) and delete_if_exists:

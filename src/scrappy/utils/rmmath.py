@@ -15,11 +15,9 @@ from typing import Iterable, Union
 import numpy as np
 from astropy.constants import c
 
-from scrappy.logging.config import setup_logging
 
 # Get the value from this quantity
 SPEED_OF_LIGHT = c.value
-snitch = setup_logging()
 
 type FloatOrFloats = Union[float, Iterable[float]]
 
