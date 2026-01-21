@@ -30,7 +30,8 @@ dependencies = [
     "numpy",
     "matplotlib",
     "natsort",
-    "scipy"
+    "scipy",
+    "xarray-fits"
 ]
 
 
