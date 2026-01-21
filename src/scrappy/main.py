@@ -9,9 +9,6 @@ from argparse import RawTextHelpFormatter
 
 __version__ = importlib.metadata.version("scrappy")
 
-from ipdb import set_trace
-
-set_trace()
 
 def get_console_scripts():
     """Retrieve the console scripts defined in pyproject.toml"""
@@ -34,8 +31,9 @@ def parser():
 This is a collection of python scripts that perform some RM related
 tasks, and geared towards (but not limited to) generating files to be used
 with polarvis: https://github.com/Mulan-94/polarvis\n""" + \
-"The following command line tools are available and help accesible via: \033[1m" + \
-" ".join([f'{_.strip()} -h\n' for _ in get_console_scripts()]) + "\033[0m"
+"The following command line tools are available and help accesible via: \n " + \
+" ".join(
+    [f'{_i}. \033[1m{_.strip()} \033[0m -h\n' for _i, _, in enumerate(get_console_scripts(), 1)])
         )
 
     parser.add_argument("-i", "--initialize", action="store_true", dest="initialize",
