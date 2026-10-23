@@ -1,4 +1,3 @@
-import argparse
 import os
 import astropy.units as u
 import matplotlib.pyplot as plt
@@ -14,7 +13,10 @@ from scipy.ndimage import rotate, label
 
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from utils.logger import logging, LOG_FORMATTER, setup_streamhandler
+from scrappy.logging import logging, LOG_FORMATTER, setup_streamhandler
+
+from scrappy.utils.genutils import timer
+
 
 snitch = logging.getLogger(__name__)
 snitch.addHandler(setup_streamhandler())
@@ -46,6 +48,7 @@ def get_wcs(name:str, pixels=False):
         return wcs.pixel_shape
     else:
         return wcs
+
 
 def world_to_pixel_coords(ra, dec, wcs_ref):
     """
@@ -154,7 +157,7 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
 
     return buffer
 
-def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=None):
+def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=None, nodata=False):
     """
     Make simple mask
 
@@ -186,7 +189,10 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
 
 
     # cater for empty masks
-    if above is None and below is None:
+    if nodata:
+        data = np.ma.masked_array(data=np.zeros_like(data))
+        data = np.ma.masked_array(data=data, mask=np.ma.make_mask(data))
+    elif (above is None and below is None):
         # convert all masks to true, create an empty mask. ie everything is masked
         data = np.ma.masked_array(data=data, mask=np.ma.make_mask(data))
     else:
@@ -239,7 +245,6 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
 
     mask_, fts = label(mask)
 
-   
     cmap = plt.get_cmap('viridis', fts)
     plt.figure()
     ax = plt.gca()
@@ -267,42 +272,21 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
     return
 
 
-def parser():
-    parse = argparse.ArgumentParser()
-    parse.add_argument("iname",
-        help="Input image from which to generate mask")
-    parse.add_argument("-o", "--outname", dest="oname", 
-        default=[], metavar="", type=str, nargs="+",
-        help="Where to dump the output(s). We can iterate over multiple reg files. See '-rb' ")
-    parse.add_argument("-above", "--above", dest="above", default=None,
-        metavar="", type=float,
-        help="Include everything above this value. ie. > above. Aka the lower limit")
-    parse.add_argument("-below", "--below", dest="below", default=None,
-        metavar="", type=float,
-        help="Include everything below this value. i.e < below. Aka the upper limit")
-    parse.add_argument("-rb", "--region-bound", dest="regname", default=[],
-        metavar="", type=str, nargs="+",
-        help="DS9 region file(s) within which to make our mask")
-    parse.add_argument("-er", "--exclude-region", dest="ex_regname", default=None,
-        metavar="", type=str,
-        help="DS9 region file(s) containing the regions that should be excluded")
-    return parse
-
-
-def main():
-    opts = parser().parse_args()
+def main(opts):
 
     for i,( oname, regname) in enumerate(zip_longest(opts.oname, opts.regname)):
         if oname is None:
             oname = f"output-mask-{i}.fits"
         make_mask(opts.iname, oname, above=opts.above, below=opts.below,
-            regname=regname, ex_regname=opts.ex_regname)
+            regname=regname, ex_regname=opts.ex_regname, nodata=opts.nodata)
     snitch.info('------- Done ------')
 
 
 def console():
     """A console run entry point for setup.cfg"""
-    main()
+    from scrappy.imageops.cli import simple_mask_parser
+    opts = simple_mask_parser().parse_args()
+    main(opts)
     snitch.info("Bye :D !")
     
 

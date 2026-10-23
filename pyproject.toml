@@ -19,7 +19,9 @@ version = "0.2.0"
 classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Astronomy"
 ]
@@ -31,7 +33,8 @@ dependencies = [
     "matplotlib",
     "natsort",
     "scipy",
-    "xarray-fits"
+    "xarray-fits",
+    "lazy_loader"
 ]
 
 
@@ -57,16 +60,15 @@ test = [
 
 
 [project.scripts]
-sc-los = "scrappy.scrap.xcrappy:console"
-sc-losrm = "scrappy.rmsynthesis.rm_synthesis:console"
-sc-rmmap = "scrappy.rmsynthesis.rmmap_x2:console"
 sc-bokehplot = "scrappy.bkplots.plot_bk:console"
-sc-ifit = "scrappy.imageops.new_fit:console"
-sc-beam-plot = "scrappy.imageops.plot_bmaj_bmin:console"
-sc-houdini = "scrappy.imageops.simple_mask:console"
-scrappy = "scrappy.main:console"
-sc-depol = "scrappy.rmsynthesis.rmmap_x2:depol_shim"
-
+sc-ifit      = "scrappy.imageops.cli:new_fit_console"
+sc-beam-plot = "scrappy.imageops.cli:plot_bmaj_bmin_console"
+sc-houdini   = "scrappy.imageops.cli:simple_mask_console"
+sc-losrm     = "scrappy.rmsynthesis.rm_synthesis:console"
+sc-rmmap     = "scrappy.rmsynthesis.rmmap_x2:console"
+sc-depol     = "scrappy.rmsynthesis.rmmap_x2:depol_shim"
+scrappy      = "scrappy.main:console"
+sc-los       = "scrappy.scrap.xcrappy:console"
 
 
 [project.urls]

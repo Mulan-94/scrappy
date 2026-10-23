@@ -1,4 +1,3 @@
-import argparse
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,7 +7,7 @@ from difflib import get_close_matches
 from copy import deepcopy
 
 
-from utils.logger import logging, LOG_FORMATTER, setup_streamhandler
+from scrappy.logging import logging, LOG_FORMATTER, setup_streamhandler
 snitch = logging.getLogger(__name__)
 snitch.addHandler(setup_streamhandler())
 snitch.setLevel("INFO")
@@ -127,39 +126,7 @@ def split_cube(fname, model_data, cube_hdr, exclude=None):
         write_fitsfile(oname, model_data[chan], clean_hdr)
 
 
-
-def argument_parser():
-    parser = argparse.ArgumentParser(
-        description="Fit a simple taylor polynomial on Stokes I cube, generating a model I")
-    parser.add_argument("cube", type=str,
-        help="Name of the input I cube to be modelled")
-    parser.add_argument("freqs", type=str,
-        help="Text file containing respective frequencies. The freqs should be in Hz")
-
-    parser.add_argument("-mask", "--mask-name", dest="mask", type=str, default=None,
-        help="Region within which to perform fits. This is a FITS MASK")
-
-    parser.add_argument("-ex", "--exclude-channels", dest="exclude", type=str, default=None, 
-        help="""Channels that should be excluded while fitting the image cube. 
-        This should be a text file containing those channel numbers. Data 
-        corresponding to the specified channels will be set to zero.""")
-    
-    parser.add_argument("-u", "--unstack", dest="unstack", action="store_true",
-        help="""Unstack the output model cube as single channelised images. If -ex was specified
-        those channels will also be excluded.""")
-    
-    parser.add_argument("-deg", "--degree", dest="deg", type=int, default=2,
-        help="Degree of the taylor polynimial to be fitted.")
-
-    parser.add_argument("-o", "--output-dir", dest="odir", type=str, default="fitness",
-        help="Directory where to dump the output files.")
-
-    return parser
-
-
-def main():
-    opts = argument_parser().parse_args()
-
+def main(opts):
     fname = opts.cube
     mask = opts.mask
     freq_fname = opts.freqs
@@ -231,10 +198,14 @@ def main():
 
     snitch.info("done")
 
+
 def console():
     """A console run entry point for setup.cfg"""
-    main()
+    from scrappy.imageops.cli import new_fit_parser
+    opts = new_fit_parser().parse_args()
+    main(opts)
     snitch.info("Bye :D !")
+
 
 if __name__ == "__main__":
     console()

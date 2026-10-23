@@ -33,7 +33,7 @@ def read_cube_fits(imname, channels=None):
 
     with fits.open(imname) as hdul:
         if channels is not None:
-            snitch.info(f"Selecting {len(ps.channels)} channels out of {hdul[0].header['NAXIS3']}")
+            snitch.info(f"Selecting {len(opts.channels)} channels out of {hdul[0].header['NAXIS3']}")
             snitch.info(f"Channels: {channels}")
             channels = np.array(channels)
             channels += 1
@@ -291,63 +291,28 @@ def read_and_plot_beams2(folder, dump=".", prefix=None, beam_file="beams.npz",
 #------------------------------------------
 
 
-def parser():
-    ps = argparse.ArgumentParser()
-
-    
-    ps.add_argument("idir", metavar="", type=str,
-        help="Directory where to find the input images"
-    )
-
-    ps.add_argument("-o", "--output", dest="output", metavar="",
-        type=str, default=".", 
-        help="Directory where to dump outputs. Default is current directory."
-    )
-    ps.add_argument("-search", "--search", type=str,
-        help="Regex of what string to search in the directory",
-        default="*[0-9q]-I-image.fits")
-
-    ps.add_argument("-t", "--threshold", dest="threshold", metavar="",
-        type=float, default=0.5, 
-        help="""Channels with WSUM/WSUM.max() below this value will be excluded.
-        Only used if -s is active"""
-    )
-    ps.add_argument("-sc", "--select-channels", dest="sel", default=None,
-        type=str, help="""Custom channel selections. This can be a file 
-        containing those channels, or a comma separated list
-        e.g. '0,1,2,3'"""
-        )
-    ps.add_argument("-as", "--auto-select", action="store_true", dest="auto_select", 
-        help="Try and suggest valid channels for selection. Use in conjuction with '-t'.")
-
-    ps.add_argument("-pre", "--prefix", type=str, default="00", 
-        help="Prefix to append on the output images")
-
-    ps.add_argument("-ec", "--exclude-channels", dest="exclude", type=str,
-        help="""Channels to be excluded during autoselection. 
-        This can be a file containing those channels, or a comma separated list
-        e.g. '0,1,2,3'.""")
-    return ps
-
-
-def main():
-    ps = parser().parse_args()
-
-    if ps.output:
-        make_out_dir(ps.output)
+def main(opts):
+    if opts.output:
+        make_out_dir(opts.output)
 
     # get info about beams and plot them
-    get_and_plot_beam_info(ps.idir, search=ps.search, dump=ps.output, prefix=ps.prefix)
+    get_and_plot_beam_info(
+        opts.idir, search=opts.search, dump=opts.output,
+        prefix=opts.prefix)
        
-    if ps.auto_select or ps.sel:
-        read_and_plot_beams2(ps.idir, dump=ps.output, beam_file=f"{ps.prefix}-beams.npz",
-            threshold=ps.threshold, sel=ps.sel, autoselect=ps.auto_select,
-            exclude=ps.exclude)
+    if opts.auto_select or opts.sel:
+        read_and_plot_beams2(opts.idir, dump=opts.output, 
+            beam_file=f"{opts.prefix}-beams.npz",
+            threshold=opts.threshold, sel=opts.sel, autoselect=opts.auto_select,
+            exclude=opts.exclude)
 
 
 def console():
     """A console run entry point for setup.cfg"""
-    main()
+
+    from scrappy.imageops.cli import plot_bmaj_bmin_parser
+    opts = plot_bmaj_bmin_parser().parse_args()
+    main(opts)
     snitch.info("Bye :D !")
     
 
