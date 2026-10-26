@@ -157,6 +157,7 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
 
     return buffer
 
+
 def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=None, nodata=False):
     """
     Make simple mask
@@ -273,6 +274,13 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
 
 
 def main(opts):
+    from ipdb import set_trace
+    EMPTY = ""
+    
+    if opts.oname is None:
+        opts.oname = (EMPTY)
+    if opts.regname is None:
+        opts.regname = (EMPTY)
 
     for i,( oname, regname) in enumerate(zip_longest(opts.oname, opts.regname)):
         if oname is None:

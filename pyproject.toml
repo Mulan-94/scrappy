@@ -34,7 +34,7 @@ dependencies = [
     "natsort",
     "scipy",
     "xarray-fits",
-    "lazy_loader"
+    "typer"
 ]
 
 

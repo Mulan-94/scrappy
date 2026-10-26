@@ -1,4 +1,14 @@
 import argparse
+import typer
+
+from types import SimpleNamespace
+from typing import Optional, Annotated, List
+from pathlib import Path
+
+sm_app = typer.Typer()
+
+
+
 
 def simple_mask_parser():
     parse = argparse.ArgumentParser()
@@ -24,10 +34,43 @@ def simple_mask_parser():
     return parse
 
 
-def simple_mask_console():
-    opts = simple_mask_parser().parse_args()
+@sm_app.command()
+def simple_mask_cli(
+    iname: Annotated[Path, 
+        typer.Argument(help="Input image from which to generate mask")],
+    oname: Annotated[Optional[List[str]],
+        typer.Option("-o", "--outname", show_default=False,
+        help="Where to dump the output(s). We can iterate over multiple reg files. See '-rb' ")] = None,
+    nodata: Annotated[Optional[bool],
+        typer.Option("-nodata", "--nodata",
+        help="Exclude the data and just make a mask with the previded region mask")] = None,
+    above: Annotated[Optional[float],
+        typer.Option("-above", "--above", show_default=False,
+        help="Include everything above this value. ie. > above. Aka the lower limit")] = None,
+    below: Annotated[Optional[float],
+        typer.Option("-below", "--below", show_default=False,
+        help="Include everything below this value. i.e < below. Aka the upper limit")] = None,
+    regname: Annotated[Optional[List[Path]], 
+        typer.Option("-rb", "--region-bound", show_default=False,
+        help="DS9 region file(s) within which to make our mask")] = None,
+    ex_regname: Annotated[Optional[List[Path]],
+        typer.Option("-er", "--exclude-region", show_default=False,
+        help="DS9 region file(s) containing the regions that should be excluded")] = None
+
+):  
+    """Generate a simple FITS mask using the given input image 'iname' as a base"""
+    opts = SimpleNamespace(**locals())
+    
     from scrappy.imageops.simple_mask import main
     main(opts)
+    return 
+    
+
+
+
+def simple_mask_console():
+    sm_app()
+    
 
 
 def plot_bmaj_bmin_parser():
