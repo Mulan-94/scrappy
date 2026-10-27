@@ -164,7 +164,7 @@ package-dir = {"" = "src"}
 
 [tool.ruff]
 # Same as Black
-line-length = 82
+line-length = 85
 target-version = "py38"
 indent-width = 4
 
@@ -180,12 +180,10 @@ select = [
     "C4",  # flake8-comprehensions
     "UP",  # pyupgrade
 ]
-
 # Ignore specific rules
 ignore = [
     "E501",  # line too long (handled by formatter)
 ]
-
 # Exclude directories
 exclude = [
     ".git",
