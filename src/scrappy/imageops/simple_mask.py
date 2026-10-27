@@ -1,9 +1,12 @@
 import os
+import matplotlib
 import astropy.units as u
 import matplotlib.pyplot as plt
 import numpy as np
 
 from itertools import zip_longest
+from astropy.wcs import FITSFixedWarning
+import warnings
 
 from astropy.io import fits
 from astropy.coordinates import SkyCoord, FK5
@@ -15,7 +18,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from scrappy.logging import logging, LOG_FORMATTER, setup_streamhandler
 
-from scrappy.utils.genutils import timer
+from scrappy.utils.genutils import timer, append_extension
+matplotlib.use("Agg")
 
 
 snitch = logging.getLogger(__name__)
@@ -32,7 +36,9 @@ def get_wcs(name:str, pixels=False):
     pixels: bool
         If specified, will return the image dimensions in pixels
     """
-    wcs = WCS(fits.getheader(name))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        wcs = WCS(fits.getheader(name))
     if wcs.naxis > 2:
         dropped = wcs.naxis - 2
         # remove extra and superflous axes. These become problematic
@@ -88,6 +94,7 @@ def merotate2(img, angle, pivot):
     rotated = rotate(paded, angle, reshape=False, output="uint8")
     return rotated[pady[0]:-pady[1], padx[0]:-padx[1]]
 
+
 def gen_reg_mask(reg, wcs, shape):
     """
     reg: Region
@@ -104,7 +111,7 @@ def gen_reg_mask(reg, wcs, shape):
 
 
 
-def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
+def get_region_mask(wcs: astropy.wcs.wcs.WCS, reg: regions.Region, fill_val: int=1, default_arr: str="zeros"):
     """
     fname: str
         Name of the input image. To be used for wcs reference
@@ -119,22 +126,21 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
         What the buffering array will be composed of. Intention is to be:
         'zeros' of 'ones' and nothing else! 
     """
-    buffer = getattr(np, default_arr)(data.shape, dtype="uint8")
-    wcs = get_wcs(fname)
+
+
+    x_npix, y_npix = wcs.pixel_shape
+    bitmask = getattr(np, default_arr)((x_npix,y_npix), dtype="uint8")
 
     if isinstance(reg, LineSkyRegion):
-        snitch.info("We don't do lines here :), skipping")
-        return buffer
+        snitch.info("""We don't do lines here :), skipping""")
+        return bitmask
 
     if isinstance(reg, RectangleSkyRegion):
         # using a custom masker for rectangular regions because it gives
         # better results!!! Do NOT change!
-        cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec,
-            wcs_ref=fname)
-        x_npix, y_npix = data.shape
+        cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec, wcs_ref=wcs)
 
         reg = reg.to_pixel(wcs)
-        x_npix, y_npix = wcs.pixel_shape
         
         w, h = np.ceil(np.array((int(reg.width), int(reg.height)))//2).astype(int)
                 
@@ -147,18 +153,45 @@ def cumulate_regions(fname, data, reg, fill_val=1, default_arr="zeros"):
         # notice how we pass y before x, returns x before y
         # Leave it this way!!!!
         mesh = tuple(np.meshgrid(ys, xs))
-        buffer[mesh] = fill_val
+        bitmask[mesh] = fill_val
         
         if hasattr(reg, "angle"):
             pivot = cx, cy
-            buffer = merotate2(buffer, -reg.angle.value, pivot=pivot)
+            bitmask = merotate2(bitmask, -reg.angle.value, pivot=pivot)
     else:
-        buffer = gen_reg_mask(reg, wcs, data.shape)
+        bitmask = gen_reg_mask(reg, wcs, (x_npix, y_npix))
 
-    return buffer
+    return bitmask
 
 
-def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=None, nodata=False):
+
+def read_regions(regs: List[Path]):
+    oregs = Regions()
+    for reg in regs:
+        oregs.extend(Regions.read(reg, format="ds9").regions)
+    snitch.info(f"Found {len(oregs)} regions")
+    return oregs
+
+
+def plot_mask(data, oname):
+    snitch.info(f"Writing output mask into {oname}")
+
+    vmax = np.percentile(data, 97.5)
+    vmin = np.percentile(data, 2.5)
+    _mask, features = label(data)
+    cmap = plt.get_cmap('viridis', features)
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+    cs = ax.imshow(_mask, origin="lower", cmap=cmap, vmin=0, vmax=features)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(cs, cax=cax, label="Tag number")
+    fig.tight_layout()
+    fig.savefig(oname, dpi=400)
+    return
+
+
+def make_mask(fname, outname, above=None, below=None, regnames=None, ex_regnames=None, nodata=False):
     """
     Make simple mask
 
@@ -177,15 +210,11 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
         A numpy array containing the mask
     """
     data = fits.getdata(fname).squeeze()
-    hdr = fits.getheader(fname)
+    
+    wcs = get_wcs(fname)
+    hdr = wcs.to_header()
     if "HISTORY" in hdr:
         del hdr["HISTORY"]
-
-    if hdr["NAXIS"] > 2:
-        wc = WCS(hdr)
-        for _ in range(wc.naxis-2):
-            wc = wc.dropaxis(-1)
-        hdr = wc.to_header()
 
 
 
@@ -207,118 +236,81 @@ def make_mask(fname, outname, above=None, below=None, regname=None, ex_regname=N
     # here unwanted regions are set to one. But in our mask, we want the wanted
     # regions set to 1, so we invert the mask
     data = np.ma.masked_invalid(data)
-    mask = ~data.mask
-    mask = mask.astype("uint8")
+    data_mask = ~data.mask
+    data_mask = data_mask.astype("uint8")
 
-    if regname is not None:
-      
-        finale = np.zeros(data.shape, dtype="uint8")
-        regs = Regions.read(regname, format="ds9")
+
+    if regnames is not None:
+        reg_mask = np.zeros(data.shape, dtype="uint8")
+        regs = read_regions(regnames)
 
         for reg in regs:
-            # finale = finale+ cumulate_regions(fname, data, reg)
-            finale = np.bitwise_or(finale, cumulate_regions(fname, data, reg))
+            reg_mask = np.bitwise_or(reg_mask, get_region_mask(wcs, reg))
 
-        if finale.sum() == 0:
+        if reg_mask.sum() == 0:
             snitch.info("Invalid region(s). We're ignoring this")
         else:
-            mask = finale * mask
-        # plt.imshow(finale + mask, origign="lower")
-        # ylim, xlim = np.where(mask+finale >= 1)
-        # plt.xlim(np.min(xlim), np.max(xlim))
-        # plt.ylim(np.min(ylim), np.max(ylim))
-        # plt.savefig(outname+"-overlay.png")
-
-    if ex_regname is not None:
-        finale = np.zeros(data.shape, dtype="uint8")
-        regs = Regions.read(ex_regname, format="ds9")
+            data_mask = reg_mask * data_mask
+        data_mask = reg_mask * data_mask
+  
+    if ex_regnames is not None:
+        reg_mask = np.zeros(data.shape, dtype="uint8")
+        regs = read_regions(ex_regnames)
 
         for reg in regs:
-            finale = np.bitwise_or(finale, cumulate_regions(fname, data, reg))
+            reg_mask = np.bitwise_or(reg_mask, get_region_mask(wcs, reg))
 
         # invert this mask to contain 1s where
-        finale = np.logical_not(finale).astype("uint8")
+        reg_mask = np.logical_not(reg_mask).astype("uint8")
 
-        if finale.sum() == 0:
+        if reg_mask.sum() == 0:
             snitch.info("Invalid region(s). We're ignoring this")
         else:
-            mask = finale * mask
+            data_mask = reg_mask * data_mask
 
-    mask_, fts = label(mask)
+    plot_mask(data_mask, f"{outname}-overlay-final.png")
 
-    cmap = plt.get_cmap('viridis', fts)
-    plt.figure()
-    ax = plt.gca()
-    cs = ax.imshow(mask_, origin="lower", cmap=cmap, vmin=1, vmax=fts)
-    ylim, xlim = np.where(mask >= 1)
-    plt.xlim(np.min(xlim), np.max(xlim))
-    plt.ylim(np.min(ylim), np.max(ylim))
-
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(cs, cax=cax, label="Tag number")
-    
-    plt.tight_layout()
-    plt.savefig(outname+"-overlay-final.png")
-
-    outname += ".mask.fits" if ".fits" not in outname else ""
+    outname = append_extension(outname, "fits")
 
     snitch.info(f"Writing output mask into {outname}")
 
-    if mask.max() == 1:
-        mask = mask.astype("uint8")
-    # del hdr["BUNIT"]
-    fits.writeto(outname, mask, header=hdr, overwrite=True)
+    if data_mask.max() == 1:
+        data_mask = data_mask.astype("uint8")
+    fits.writeto(outname, data_mask, header=hdr, overwrite=True)
 
     return
 
 
 def main(opts):
-    from ipdb import set_trace
+
     EMPTY = ""
     
     if opts.oname is None:
         opts.oname = (EMPTY)
     if opts.regname is None:
         opts.regname = (EMPTY)
+    
+    if opts.oname is None:
+        oname = f"output-mask-{i}.fits"
+    
+    make_mask(opts.iname, opts.oname, above=opts.above, below=opts.below,
+                regnames=opts.regname, ex_regnames=opts.ex_regname, nodata=opts.nodata)
 
-    for i,( oname, regname) in enumerate(zip_longest(opts.oname, opts.regname)):
-        if oname is None:
-            oname = f"output-mask-{i}.fits"
-        make_mask(opts.iname, oname, above=opts.above, below=opts.below,
-            regname=regname, ex_regname=opts.ex_regname, nodata=opts.nodata)
+    # for i,( oname, regname) in enumerate(zip_longest(opts.oname, opts.regname)):
+    #     if oname is None:
+    #         oname = f"output-mask-{i}.fits"
+    #     make_mask(opts.iname, oname, above=opts.above, below=opts.below,
+    #         regname=regname, ex_regname=opts.ex_regname, nodata=opts.nodata)
     snitch.info('------- Done ------')
 
 
 def console():
     """A console run entry point for setup.cfg"""
-    from scrappy.imageops.cli import simple_mask_parser
-    opts = simple_mask_parser().parse_args()
-    main(opts)
+    from scrappy.imageops.cli import sm_app
+    sm_app()
     snitch.info("Bye :D !")
     
 
 if __name__ == "__main__":
     console()
-
-
-
-# if __name__ == "__main__":
-#     main()
-#     """
-#     python simple-mask.py ../../6-00-polarimetry/i-mfs.fits -o testing -above 4e-3 -rb pica_region-for-mask.reg
-
-#     python simple-mask.py ../6-00-polarimetry/i-mfs.fits -o east-lobe.fits -above 4e-3 -rb important_regions/lobes/e-lobe.reg
-
-#     python simple-mask.py ../6-00-polarimetry/i-mfs.fits -o west-lobe.fits -above 4e-3 -rb important_regions/lobes/w-lobe.reg
-
-#     # with region exclusions
-#     python simple-mask.py ../6-00-polarimetry/i-mfs.fits -o test.fits -above 4e-3 -rb important_regions/lobes/2023-lobes.reg -er important_regions/hotspots/core.reg
-
-
-#     # pica source mask
-#     python simple-mask.py -o mod-pica-4mjy-mask.fits -er 4mjy-remove-patch.reg ../6-00-polarimetry/i-mfs.fits --above 4e-3 -rb important_regions/pica_region-for-mask.reg
-
-#     """
-
 

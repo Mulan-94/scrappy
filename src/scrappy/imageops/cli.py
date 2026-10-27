@@ -6,6 +6,8 @@ from typing import Optional, Annotated, List
 from pathlib import Path
 
 sm_app = typer.Typer()
+# plot_beam_app = typer.Typer()
+# new_fit_app = typer.Typer()
 
 
 
@@ -38,12 +40,12 @@ def simple_mask_parser():
 def simple_mask_cli(
     iname: Annotated[Path, 
         typer.Argument(help="Input image from which to generate mask")],
-    oname: Annotated[Optional[List[str]],
+    oname: Annotated[Optional[str],
         typer.Option("-o", "--outname", show_default=False,
-        help="Where to dump the output(s). We can iterate over multiple reg files. See '-rb' ")] = None,
+        help="""Where to dump the output(s)""")] = None,
     nodata: Annotated[Optional[bool],
         typer.Option("-nodata", "--nodata",
-        help="Exclude the data and just make a mask with the previded region mask")] = None,
+        help="Exclude the data and just make a mask with the provided region mask")] = None,
     above: Annotated[Optional[float],
         typer.Option("-above", "--above", show_default=False,
         help="Include everything above this value. ie. > above. Aka the lower limit")] = None,
@@ -52,11 +54,13 @@ def simple_mask_cli(
         help="Include everything below this value. i.e < below. Aka the upper limit")] = None,
     regname: Annotated[Optional[List[Path]], 
         typer.Option("-rb", "--region-bound", show_default=False,
-        help="DS9 region file(s) within which to make our mask")] = None,
+        help="""DS9 region file(s) within which to make our mask. Use this 
+            option option multiple times to specify files. E.g.
+            -rb file1.reg -rb file2.reg ...""")] = None,
     ex_regname: Annotated[Optional[List[Path]],
         typer.Option("-er", "--exclude-region", show_default=False,
-        help="DS9 region file(s) containing the regions that should be excluded")] = None
-
+        help="""DS9 region file(s) containing the regions that should be excluded.
+            See -rb for instructions on multiple files.""")] = None
 ):  
     """Generate a simple FITS mask using the given input image 'iname' as a base"""
     opts = SimpleNamespace(**locals())
