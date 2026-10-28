@@ -1,13 +1,13 @@
-import os
-import sys
-import shutil
-from time import perf_counter
-from importlib import util
-import numpy as np
 import logging
-
-from pathlib import Path
+import os
+import shutil
+import sys
 from contextlib import contextmanager
+from importlib import util
+from pathlib import Path
+from time import perf_counter
+
+import numpy as np
 
 snitch = logging.getLogger(__name__)
 
@@ -26,17 +26,17 @@ def np_savetxt(path, data, **kwargs):
     np.savetxt(path, data, **kwargs)
     print(f"Saved at: {path.resolve()}")
 
+
 def np_savez(path, **kwargs):
     path = Path(path)
     np.savez(path, **kwargs)
     print(f"Saved at: {path.resolve()}")
 
+
 def savefig(fig, path, **kwargs):
     path = Path(path)
     fig.savefig(path, **kwargs)
     print(f"Saved at: {path.resolve()}")
-
-
 
 
 def example_context(fname, mode="r"):
@@ -49,12 +49,13 @@ def example_context(fname, mode="r"):
     return data
 
 
-def append_extension(name:str, extension: str):
+def append_extension(name: str, extension: str):
     extensions = "fits html json npz png reg txt".split()
     extensions = {ext: f".{ext}" for ext in extensions}
     if extension not in name:
         name += extensions[extension]
     return name
+
 
 def make_out_dir(dir_name: str, delete_if_exists: bool = False):
     if os.path.isdir(dir_name) and delete_if_exists:
@@ -66,12 +67,13 @@ def make_out_dir(dir_name: str, delete_if_exists: bool = False):
         os.makedirs(dir_name)
     return os.path.abspath(dir_name)
 
-def fullpath(*args): #TODO: perhaps change the name of this function?
+
+def fullpath(*args):  # TODO: perhaps change the name of this function?
     return os.path.join(*args)
 
 
 def read_sorted_filnames(fname: Path) -> list[Path]:
-    with open(fname, "r") as post:
+    with open(fname) as post:
         items = post.readlines()
         items = [_.replace("\n", "") for _ in items]
     return items
@@ -81,8 +83,9 @@ def timer(func):
     def wrapper(*args, **kwargs):
         start = perf_counter()
         result = func(*args, **kwargs)
-        print(f"'{func.__name__}' run in: {perf_counter()-start:.2f} sec")
+        print(f"'{func.__name__}' run in: {perf_counter() - start:.2f} sec")
         return result
+
     return wrapper
 
 
@@ -95,9 +98,11 @@ def read_npz(filename: Path):
 def make_importable():
     import os
     import sys
+
     PATH = set(sys.path)
     PROJECT_ROOT = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), os.pardir))
+        os.path.join(os.path.dirname(__file__), os.pardir)
+    )
     if not PATH.issuperset(PROJECT_ROOT):
         sys.path.append(PROJECT_ROOT)
 
@@ -110,7 +115,7 @@ def does_specified_file_exist(*args):
         if not os.path.isfile(fname):
             not_found.append(fname)
 
-    if len(not_found)>0:
+    if len(not_found) > 0:
         snitch.error("The following files/dirs are required but were not found:")
         for fname in not_found:
             snitch.error(f"-> {fname}")
@@ -120,8 +125,6 @@ def does_specified_file_exist(*args):
         return True
 
 
-
-
 def lazy_loader(name):
     # Check if already in cache
     if name in sys.modules:
@@ -129,7 +132,7 @@ def lazy_loader(name):
 
     spec = util.find_spec(name)
     if spec is None:
-        snitch.error(f"Module {bold_red(name)} was not found. Ensure it is installed")
+        snitch.error(f"Module {name} was not found. Ensure it is installed")
         raise ImportError(f"Required module '{name}' missing")
 
     # 2. Create a lazy loader based on the existing loader
@@ -143,7 +146,7 @@ def lazy_loader(name):
     sys.modules[name] = module
     loader.exec_module(module)
 
-    snitch.debug(f"Lazily importing heaviness: {bold_blue(name)}")
+    snitch.debug(f"Lazily importing heaviness: {name}")
 
     return module
 
@@ -151,6 +154,7 @@ def lazy_loader(name):
 # from https://stackoverflow.com/questions/2352181/how-to-use-a-dot-to-access-members-of-dictionary
 class dicto(dict):
     """Use dot operator to access to dictionary attributes"""
+
     __getattr__ = dict.get
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__

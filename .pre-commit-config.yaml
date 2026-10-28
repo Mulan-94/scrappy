@@ -4,9 +4,9 @@ repos:
     hooks:
       - id: ruff                  # linter
         args: [--fix]             # auto-fix what it can
-        stages: [pre-push]
+        # stages: [pre-push]
       - id: ruff-format           # formatter
-        stages: [pre-push]
+        # stages: [pre-push]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
