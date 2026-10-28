@@ -2,25 +2,75 @@ import os
 import sys
 import shutil
 from time import perf_counter
-
+from importlib import util
 import numpy as np
+import logging
+
+from pathlib import Path
+from contextlib import contextmanager
+
+snitch = logging.getLogger(__name__)
 
 
-def make_out_dir(dir_name, delete_if_exists=False):
+@contextmanager
+def super_write(path, mode="r", **kwargs):
+    path = Path(path)
+    with open(path, mode, **kwargs) as file:
+        yield file
+    if "a" in mode or "w" in mode:
+        print(f"Saved at: {path.resolve()}")
+
+
+def np_savetxt(path, data, **kwargs):
+    path = Path(path)
+    np.savetxt(path, data, **kwargs)
+    print(f"Saved at: {path.resolve()}")
+
+def np_savez(path, **kwargs):
+    path = Path(path)
+    np.savez(path, **kwargs)
+    print(f"Saved at: {path.resolve()}")
+
+def savefig(fig, path, **kwargs):
+    path = Path(path)
+    fig.savefig(path, **kwargs)
+    print(f"Saved at: {path.resolve()}")
+
+
+
+
+def example_context(fname, mode="r"):
+    manager = open(fname, mode)
+    fobj = manager.__enter__()
+    try:
+        data = fobj.read()
+    finally:
+        manager.__exit__()
+    return data
+
+
+def append_extension(name:str, extension: str):
+    extensions = "fits html json npz png reg txt".split()
+    extensions = {ext: f".{ext}" for ext in extensions}
+    if extension not in name:
+        name += extensions[extension]
+    return name
+
+def make_out_dir(dir_name: str, delete_if_exists: bool = False):
     if os.path.isdir(dir_name) and delete_if_exists:
         snitch.info(f"Deleting '{dir_name}' because it already exists")
         shutil.rmtree(dir_name)
-        
+
     if not os.path.isdir(dir_name):
         snitch.info(f"Creating directory: {dir_name}")
         os.makedirs(dir_name)
     return os.path.abspath(dir_name)
 
-def fullpath(*args):
+def fullpath(*args): #TODO: perhaps change the name of this function?
     return os.path.join(*args)
 
 
-def read_sorted_filnames(fname):
+def read_sorted_filnames(fname: Path) -> list[Path]:
     with open(fname, "r") as post:
         items = post.readlines()
         items = [_.replace("\n", "") for _ in items]
@@ -31,12 +81,12 @@ def timer(func):
     def wrapper(*args, **kwargs):
         start = perf_counter()
         result = func(*args, **kwargs)
-        snitch.info(f"'{func.__name__}' run in: {perf_counter()-start:.2f} sec")
+        print(f"'{func.__name__}' run in: {perf_counter()-start:.2f} sec")
         return result
     return wrapper
 
 
-def read_npz(filename):
+def read_npz(filename: Path):
     with np.load(filename, allow_pickle=True) as dat:
         datas = dict(dat)
     return datas
@@ -68,7 +118,34 @@ def does_specified_file_exist(*args):
         sys.exit()
     else:
         return True
-    
+
+
+
+
+def lazy_loader(name):
+    # Check if already in cache
+    if name in sys.modules:
+        return sys.modules[name]
+
+    spec = util.find_spec(name)
+    if spec is None:
+        snitch.error(f"Module {bold_red(name)} was not found. Ensure it is installed")
+        raise ImportError(f"Required module '{name}' missing")
+
+    # 2. Create a lazy loader based on the existing loader
+    loader = util.LazyLoader(spec.loader)
+    spec.loader = loader
+
+    # 3. Create the module object from the spec
+    module = util.module_from_spec(spec)
+
+    # 4. Insert into sys.modules and execute the loader
+    sys.modules[name] = module
+    loader.exec_module(module)
+
+    snitch.debug(f"Lazily importing heaviness: {bold_blue(name)}")
+
+    return module
 
 
 # from https://stackoverflow.com/questions/2352181/how-to-use-a-dot-to-access-members-of-dictionary
