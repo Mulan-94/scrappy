@@ -1,4 +1,3 @@
-import argparse
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Annotated, List, Optional
@@ -6,11 +5,11 @@ from typing import Annotated, List, Optional
 import typer
 
 # snitch = config_logger()
+help_set = {"context_settings": {"help_option_names": ["-h", "--help"]}}
 
-sm_app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]})
-plot_beam_app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]})
-
-# new_fit_app = typer.Typer()
+sm_app = typer.Typer(**help_set)
+plot_beam_app = typer.Typer(**help_set)
+new_fit_app = typer.Typer(**help_set)
 
 # TODO: configure logger under each *_cli() to enable outdir perhaps
 # TODO: do it just once for each module
@@ -21,15 +20,15 @@ def simple_mask_cli(
     iname: Annotated[
         Path, typer.Argument(help="Input image from which to generate mask")
     ],
-    oname: Annotated[
+    outname: Annotated[
         Optional[str],
         typer.Option(
             "-o",
             "--outname",
             show_default=False,
-            help="""Where to dump the output(s)""",
+            help="""Name of output mask""",
         ),
-    ] = None,
+    ] = "sc-output-mask.fits",
     above: Annotated[
         Optional[float],
         typer.Option(
@@ -103,7 +102,7 @@ def plot_bmaj_bmin_cli(
             help="Directory where to find the input images",
         ),
     ],
-    output: Annotated[
+    outdir: Annotated[
         str,
         typer.Option(
             "-o",
@@ -111,7 +110,7 @@ def plot_bmaj_bmin_cli(
             rich_help_panel="Input/Output",
             help="Directory where to dump outputs. Default is current directory.",
         ),
-    ],
+    ] = "sc-beam-plot-io",
     auto_select: Annotated[
         Optional[bool],
         typer.Option(
@@ -185,71 +184,76 @@ def plot_bmaj_bmin_console():
     plot_beam_app()
 
 
-def new_fit_parser():
-    parser = argparse.ArgumentParser(
-        description="Fit a simple taylor polynomial on Stokes I cube, generating a model I"
-    )
-    parser.add_argument(
-        "cube", type=str, help="Name of the input I cube to be modelled"
-    )
-    parser.add_argument(
-        "freqs",
-        type=str,
-        help="Text file containing respective frequencies. The freqs should be in Hz",
-    )
+@new_fit_app.command()
+def new_fit_cli(
+    cube: Annotated[
+        Path,
+        typer.Option(
+            "-cube",
+            "--cube",
+            rich_help_panel="Required",
+            help="Input Stokes I cube to be modelled",
+        ),
+    ],
+    freqs: Annotated[
+        Path,
+        typer.Option(
+            "-freqs",
+            "--freqs",
+            rich_help_panel="Required",
+            help="""A text file containing respective frequencies.
+            The frequencies should be in Hz""",
+        ),
+    ],
+    deg: Annotated[
+        int,
+        typer.Option(
+            "-deg", "--degree", help="Degree of the taylor polynimial to be fitted."
+        ),
+    ] = 2,
+    exclude: Annotated[
+        str,
+        typer.Option(
+            "-ex",
+            "--exclude-channels",
+            help="""Comma-separated list of channels that should be excluded
+            during fitting. Data corresponding to the specified channels
+            will be set to zero.""",
+        ),
+    ] = None,
+    mask: Annotated[
+        Path,
+        typer.Option(
+            "-mask", "--mask", help="FITS mask within which to perform fitting"
+        ),
+    ] = None,
+    outdir: Annotated[
+        Path,
+        typer.Option(
+            "-o", "--output-dir", help="Directory in which to dump the output files."
+        ),
+    ] = "sc-fit-io",
+    unstack: Annotated[
+        bool,
+        typer.Option(
+            "-unstack",
+            "--unstack",
+            help="""Unstack the output model cube as single channelised images.
+            If -ex was specified those channels will also be excluded.""",
+        ),
+    ] = False,
+):
+    """
+    Fit a simple taylor polynomial on Stokes I cube, generating a model I
+    """
+    new_fit_app()
 
-    parser.add_argument(
-        "-mask",
-        "--mask-name",
-        dest="mask",
-        type=str,
-        default=None,
-        help="Region within which to perform fits. This is a FITS MASK",
-    )
+    from scrappy.imageops.new_fit import main
 
-    parser.add_argument(
-        "-ex",
-        "--exclude-channels",
-        dest="exclude",
-        type=str,
-        default=None,
-        help="""Channels that should be excluded while fitting the image cube.
-        This should be a text file containing those channel numbers. Data
-        corresponding to the specified channels will be set to zero.""",
-    )
-
-    parser.add_argument(
-        "-u",
-        "--unstack",
-        dest="unstack",
-        action="store_true",
-        help="""Unstack the output model cube as single channelised images. If -ex was specified
-        those channels will also be excluded.""",
-    )
-
-    parser.add_argument(
-        "-deg",
-        "--degree",
-        dest="deg",
-        type=int,
-        default=2,
-        help="Degree of the taylor polynimial to be fitted.",
-    )
-
-    parser.add_argument(
-        "-o",
-        "--output-dir",
-        dest="odir",
-        type=str,
-        default="fitness",
-        help="Directory where to dump the output files.",
-    )
-
-    return parser
+    opts = SimpleNamespace(**locals())
+    main(opts)
+    return
 
 
 def new_fit_console():
-    opts = new_fit_parser().parse_args()
-    from scrappy.imageops.new_fit import main
-
-    main(opts)
+    new_fit_app()

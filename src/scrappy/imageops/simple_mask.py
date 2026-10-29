@@ -287,14 +287,9 @@ def make_mask(
 
 
 def main(opts):
-    if opts.oname is None:
-        oname = "output-mask.fits"
-    else:
-        oname = opts.oname
-
     make_mask(
         opts.iname,
-        oname,
+        opts.outname,
         above=opts.above,
         below=opts.below,
         regnames=opts.regname,

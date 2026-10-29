@@ -171,7 +171,7 @@ def plot_beams(data: SimpleNamespace, oname: str) -> None:
 
 def main(opts):
     global OUTDIR
-    OUTDIR = "beam-plot-io" if opts.output is None else opts.output
+    OUTDIR = opts.outdir
 
     make_out_dir(OUTDIR)
 
