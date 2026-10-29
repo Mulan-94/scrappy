@@ -11,7 +11,7 @@ matplotlib.use("Agg")
 
 from operator import itemgetter
 
-from scrappy.logging import logging, setup_streamhandler
+from scrappy.logging.config import configure_logger
 from scrappy.utils.astroimage import AstroImage
 from scrappy.utils.genutils import (
     append_extension,
@@ -23,9 +23,8 @@ from scrappy.utils.genutils import (
     super_write,
 )
 
-snitch = logging.getLogger(__name__)
-snitch.addHandler(setup_streamhandler())
-snitch.setLevel("INFO")
+snitch = configure_logger(level="DEBUG")
+
 
 OUTDIR = None
 
@@ -75,8 +74,8 @@ def filter_images_and_get_beam_dims(
     images = list(itemgetter(*includes)(images))
     for _ in images:
         snitch.info(f"--> {_}")
-        with super_write(fullpath(OUTDIR, "included-images.txt"), "w") as file:
-            file.writelines([f"{_}\n" for _ in _ex])
+    with super_write(fullpath(OUTDIR, "included-images.txt"), "w") as file:
+        file.writelines([f"{_}\n" for _ in images])
 
     dims.norm_wsums = wsums
     dims.mask = np.zeros(dims.wsum.size, dtype=bool)
@@ -109,7 +108,7 @@ def get_image_beam_dims(indir: str, search_str: str) -> SimpleNamespace:
 
 def plot_beams(data: SimpleNamespace, oname: str) -> None:
     oname = append_extension(oname, "png")
-    snitch.info(f"Saving file at: {oname}")
+    snitch.info("Now plotting beams")
 
     plt.close("all")
     fig, ax = plt.subplots(figsize=(16, 9))

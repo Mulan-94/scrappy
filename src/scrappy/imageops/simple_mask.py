@@ -12,15 +12,13 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from regions import LineSkyRegion, RectangleSkyRegion, Regions
 from scipy.ndimage import label, rotate
 
-from scrappy.logging import logging, setup_streamhandler
-from scrappy.utils.genutils import append_extension
+from scrappy.logging.config import configure_logger
+from scrappy.utils.genutils import append_extension, savefig, timer
 
 matplotlib.use("Agg")
 
 
-snitch = logging.getLogger(__name__)
-snitch.addHandler(setup_streamhandler())
-snitch.setLevel("INFO")
+snitch = configure_logger(level="debug")
 
 
 def get_wcs(name: str, pixels=False):
@@ -85,10 +83,11 @@ def merotate2(img, angle, pivot):
     From:
     https://stackoverflow.com/questions/25458442/rotate-a-2d-image-around-specified-origin-in-python
     """
+    snitch.debug("Rotating region")
     padx = [img.shape[1] - pivot[0], pivot[0]]
     pady = [img.shape[0] - pivot[1], pivot[1]]
     paded = np.pad(img, [pady, padx], "constant")
-    rotated = rotate(paded, angle, reshape=False, output="uint8")
+    rotated = rotate(paded, angle, reshape=False, output="uint8", order=1)
     return rotated[pady[0] : -pady[1], padx[0] : -padx[1]]
 
 
@@ -107,6 +106,7 @@ def gen_reg_mask(reg, wcs, shape):
     return mask.astype("uint8")
 
 
+@timer
 def get_region_mask(
     wcs: WCS, reg: Regions, fill_val: int = 1, default_arr: str = "zeros"
 ):
@@ -129,10 +129,11 @@ def get_region_mask(
     bitmask = getattr(np, default_arr)((x_npix, y_npix), dtype="uint8")
 
     if isinstance(reg, LineSkyRegion):
-        snitch.info("""We don't do lines here :), skipping""")
+        snitch.warn("""We don't do lines here :), skipping""")
         return bitmask
 
     if isinstance(reg, RectangleSkyRegion):
+        snitch.debug("Processing rectangular region")
         # using a custom masker for rectangular regions because it gives
         # better results!!! Do NOT change!
         cx, cy = world_to_pixel_coords(reg.center.ra, reg.center.dec, wcs_ref=wcs)
@@ -162,15 +163,16 @@ def get_region_mask(
 
 
 def read_regions(regs: List[Path]):
+    snitch.info("Reading region files")
     oregs = Regions()
     for reg in regs:
         oregs.extend(Regions.read(reg, format="ds9").regions)
-    snitch.info(f"Found {len(oregs)} regions")
+    snitch.info(f"Found {len(oregs)} valid regions")
     return oregs
 
 
 def plot_mask(data, oname):
-    snitch.info(f"Writing output mask into {oname}")
+    snitch.info("Writing output mask")
 
     _mask, features = label(data)
     cmap = plt.get_cmap("viridis", features)
@@ -181,7 +183,7 @@ def plot_mask(data, oname):
     cax = divider.append_axes("right", size="5%", pad=0.05)
     fig.colorbar(cs, cax=cax, label="Tag number")
     fig.tight_layout()
-    fig.savefig(oname, dpi=400)
+    savefig(fig, oname, dpi=400)
     return
 
 
@@ -240,6 +242,7 @@ def make_mask(
     data_mask = data_mask.astype("uint8")
 
     if regnames is not None:
+        snitch.info("Inclusion regions specified")
         reg_mask = np.zeros(data.shape, dtype="uint8")
         regs = read_regions(regnames)
 
@@ -251,8 +254,10 @@ def make_mask(
         else:
             data_mask = reg_mask * data_mask
         data_mask = reg_mask * data_mask
+        snitch.info("Regions included in mask")
 
     if ex_regnames is not None:
+        snitch.info("Exclusion regions specified")
         reg_mask = np.zeros(data.shape, dtype="uint8")
         regs = read_regions(ex_regnames)
 
@@ -266,6 +271,7 @@ def make_mask(
             snitch.info("Invalid region(s). We're ignoring this")
         else:
             data_mask = reg_mask * data_mask
+        snitch.info("Regions excluded in mask")
 
     plot_mask(data_mask, f"{outname}-overlay-final.png")
 
@@ -283,6 +289,8 @@ def make_mask(
 def main(opts):
     if opts.oname is None:
         oname = "output-mask.fits"
+    else:
+        oname = opts.oname
 
     make_mask(
         opts.iname,

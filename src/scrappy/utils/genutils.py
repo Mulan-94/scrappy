@@ -18,25 +18,25 @@ def super_write(path, mode="r", **kwargs):
     with open(path, mode, **kwargs) as file:
         yield file
     if "a" in mode or "w" in mode:
-        print(f"Saved at: {path.resolve()}")
+        snitch.info(f"Saved at: {path.resolve()}")
 
 
 def np_savetxt(path, data, **kwargs):
     path = Path(path)
     np.savetxt(path, data, **kwargs)
-    print(f"Saved at: {path.resolve()}")
+    snitch.info(f"Saved at: {path.resolve()}")
 
 
 def np_savez(path, **kwargs):
     path = Path(path)
     np.savez(path, **kwargs)
-    print(f"Saved at: {path.resolve()}")
+    snitch.info(f"Saved at: {path.resolve()}")
 
 
 def savefig(fig, path, **kwargs):
     path = Path(path)
     fig.savefig(path, **kwargs)
-    print(f"Saved at: {path.resolve()}")
+    snitch.info(f"Saved at: {path.resolve()}")
 
 
 def example_context(fname, mode="r"):
@@ -83,7 +83,7 @@ def timer(func):
     def wrapper(*args, **kwargs):
         start = perf_counter()
         result = func(*args, **kwargs)
-        print(f"'{func.__name__}' run in: {perf_counter() - start:.2f} sec")
+        snitch.info(f"'{func.__name__}' run in: {perf_counter() - start:.2f} sec")
         return result
 
     return wrapper

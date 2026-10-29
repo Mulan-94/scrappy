@@ -5,10 +5,15 @@ from typing import Annotated, List, Optional
 
 import typer
 
+# snitch = config_logger()
+
 sm_app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]})
 plot_beam_app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]})
 
 # new_fit_app = typer.Typer()
+
+# TODO: configure logger under each *_cli() to enable outdir perhaps
+# TODO: do it just once for each module
 
 
 @sm_app.command()
