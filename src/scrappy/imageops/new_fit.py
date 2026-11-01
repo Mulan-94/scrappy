@@ -55,9 +55,6 @@ def split_cube(oname, out_cube, in_cube, exclude=None):
     snitch.info("Unstacking / splitting the output cube")
     clean_hdr = in_cube.get_clean_header()
 
-    # name the images per channel like wsclean
-    # oname = oname + ("-" + f"{chan}".zfill(4) + ".fits")
-
     for chan in range(out_cube.shape[0]):
         if (exclude is not None) and (chan in exclude):
             continue
@@ -147,7 +144,9 @@ def main(opts):
         mask_data = np.broadcast_to(~mask_im.data.astype(bool), image.data.shape)
         image.data = np.ma.array(data=image.data, mask=mask_data)
 
-    model_data, coeffs, residuals = fit_the_data(image.frequency, image.data, deg=2)
+    model_data, coeffs, residuals = fit_the_data(
+        image.frequency, image.data, deg=deg
+    )
 
     model_hdr = deepcopy(image.header)
 
