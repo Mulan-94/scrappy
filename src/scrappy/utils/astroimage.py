@@ -1,14 +1,23 @@
-from astropy.io import fits
+from copy import deepcopy
+
 import typer
-import numpy as np
+from astropy.io import fits
+
+from scrappy.logging.config import configure_logger
+
+snitch = configure_logger()
+
 
 class AstroImage:
     _image_id = 0
 
     def __init__(self, fname):
+        snitch.info(f"Loading image: {fname.resolve()}")
         self.fname = fname
         self._is_cube = None
         self._hdr = self._get_header()
+        self._data = None
+        self._freq = None
 
         if not self._is_cube:
             AstroImage._image_id += 1
@@ -34,13 +43,24 @@ class AstroImage:
 
     @property
     def data(self):
-        _data = fits.getdata(self.fname).squeeze()
-        return _data
+        if self._data is None:
+            self._data = fits.getdata(self.fname).squeeze()
+        return self._data
+
+    @data.setter
+    def data(self, new_data=None):
+        self._data = new_data
 
     @property
     def frequency(self):
         """The central frequency of the image"""
-        return self._hdr["CRVAL3"]
+        if self._freq is None:
+            self._freq = self._hdr["CRVAL3"]
+        return self._freq
+
+    @frequency.setter
+    def frequency(self, value):
+        self._freq = value
 
     @property
     def header(self):
@@ -48,14 +68,13 @@ class AstroImage:
 
     def _get_header(self):
         hdr = fits.getheader(self.fname)
-        if hdr["NAXIS3"] >1:
+        if "NAXIS3" in hdr.keys() and hdr["NAXIS3"] > 1:
             self._is_cube = True
         return hdr
 
     @property
     def wsum(self):
         return self._hdr["WSCVWSUM"]
-
 
     def get_beam_dims(self) -> dict:
         """
@@ -64,20 +83,19 @@ class AstroImage:
         dims: dict[int: dict[key: val]]
             Of the format {chan: {x|y|z: }}
         """
-        hkeys = "BMAJ BMIN BPA".split()
 
-        dims = dict(chan=[], bmaj=[], bmin=[], bpa=[])
+        dims = {"chan": [], "bmaj": [], "bmin": [], "bpa": []}
         if self.is_single_file:
-            dims["chan"] = AstroImage._image_id
+            dims["chan"] = 1
             dims["bmaj"] = self._hdr["BMAJ"]
             dims["bmin"] = self._hdr["BMIN"]
             dims["bpa"] = self._hdr["BPA"]
         else:
-            nchans = self._hdr['NAXIS3']
+            nchans = self._hdr["NAXIS3"]
             typer.echo(f"Found {nchans} frequencies in file")
-            chans = range(1, nchans+1)
+            chans = range(1, nchans + 1)
 
-            dims = dict()
+            dims = {}
             for chan_id in chans:
                 dims["chan"].append(chan_id)
                 dims["bmaj"].append(self._hdr[f"BMAJ{chan_id}"])
@@ -85,3 +103,20 @@ class AstroImage:
                 dims["bpa"].append(self._hdr[f"BPA{chan_id}"])
 
         return dims
+
+    def get_clean_header(self):
+        """
+        A header with only the important stuff
+        """
+        nhdr = deepcopy(self._hdr)
+        nhdr.remove("HISTORY", remove_all=True)
+        deletes = []
+        for word in "wsc bma bmi bpa".upper().split():
+            for key in nhdr.keys():
+                if word in key:
+                    deletes.append(key)
+
+        for _ in deletes:
+            snitch.debug(f"Deleting {_} key from header")
+            nhdr.remove(_, remove_all=True)
+        return nhdr
