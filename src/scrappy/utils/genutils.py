@@ -8,6 +8,7 @@ from pathlib import Path
 from time import perf_counter
 
 import numpy as np
+from astropy.io import fits
 
 snitch = logging.getLogger(__name__)
 
@@ -19,6 +20,11 @@ def super_write(path, mode="r", **kwargs):
         yield file
     if "a" in mode or "w" in mode:
         snitch.info(f"Saved at: {path.resolve()}")
+
+
+def save_fits(path, data, **kwargs):
+    fits.writeto(path, data, **kwargs)
+    snitch.info(f"Saved at: {path.resolve()}")
 
 
 def np_savetxt(path, data, **kwargs):
@@ -47,6 +53,23 @@ def example_context(fname, mode="r"):
     finally:
         manager.__exit__()
     return data
+
+
+def selector(spec: str):
+    """
+    A simple range selector given an input string
+
+    Input
+    -----
+    spec: Comma-separated string, or a range of number seperated by a colon
+        e.g. 10:87
+    """
+    if ":" in spec:
+        spec = [int(_) for _ in spec.split(":")]
+        return range(spec[0], spec[1])
+    if "," in spec:
+        spec = [int(_) for _ in spec.split(",")]
+    return range(spec)
 
 
 def append_extension(name: str, extension: str):
