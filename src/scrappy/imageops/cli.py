@@ -216,9 +216,12 @@ def new_fit_cli(
         typer.Option(
             "-ex",
             "--exclude-channels",
-            help="""Comma-separated list of channels that should be excluded
-            during fitting. Data corresponding to the specified channels
-            will be set to zero.""",
+            help="""A list of channels that should be excluded during fitting.
+            Can be a:
+            1. Comma-separated list
+            2. A range specified by a colon e.g. 23:56
+            3. A text file containing channels to be excluded, line by line.
+            Data corresponding to the specified channel will be set to Nan""",
         ),
     ] = None,
     mask: Annotated[
@@ -246,11 +249,9 @@ def new_fit_cli(
     """
     Fit a simple taylor polynomial on Stokes I cube, generating a model I
     """
-    new_fit_app()
-
+    opts = SimpleNamespace(**locals())
     from scrappy.imageops.new_fit import main
 
-    opts = SimpleNamespace(**locals())
     main(opts)
     return
 

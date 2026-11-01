@@ -1,26 +1,20 @@
-import os
+import matplotlib
 import numpy as np
-import matplotlib.pyplot as plt
-from astropy.io import fits
-from itertools import product
-from difflib import get_close_matches
+
+matplotlib.use("Agg")
+import sys
 from copy import deepcopy
+from pathlib import Path
 
+from scrappy.imageops.cli import new_fit_app
+from scrappy.logging.config import configure_logger
+from scrappy.utils.astroimage import AstroImage
+from scrappy.utils.genutils import save_fits, selector
 
-from scrappy.logging import logging, LOG_FORMATTER, setup_streamhandler
-snitch = logging.getLogger(__name__)
-snitch.addHandler(setup_streamhandler())
-snitch.setLevel("INFO")
+snitch = configure_logger()
+# snitch = logging.getLogger(__name__)
 
-
-def get_pixel(fname):
-    pix  = fits.getdata(fname).squeeze()[:, 2061, 2190]
-    return pix
-
-def process_pixel(data, x_pix, y_pix):
-    pix_data = data[:, x_pix, y_pix]
-    polynomial_fit()
-
+OUTDIR = None
 
 
 def polynomial_fit(x, y_raw, degree):
@@ -54,168 +48,150 @@ def polynomial_fit(x, y_raw, degree):
     return y_fit, tuple(coeffs.data)
 
 
-def get_clean_header(fname=None, hdr=None):
-    # remove extra axes
-    # remove extra beam information
-    # remove history
-    # remove extra ctypes
-    # removE WSC stuff
-    # 
-    if fname is not None:
-        hdr = fits.getheader(fname)
-
-    copy_hdr = deepcopy(hdr)
-    for pref in "wsc bma bmi bpa history".upper().split():
-        for key in hdr.keys():
-            if (pref in key) and (key in copy_hdr):
-                # snitch.info(f"Deleting this key: {key}")
-                del copy_hdr[key]
-    
-    return copy_hdr
-
-
-
-def plot_mod_vs_raw(raw, model, freq, fname="mod-vs-raw.png"):
-    """
-    raw: np.array
-        The raw data for a single LOS
-    model: np.array
-        Modelled data fro that LOS
-    freq: np.array
-        The X-axis data (frequency)
-    """
-    snitch.info("Plotting Fitted model and raw data for a single LOS")
-
-    plt.close("all")
-    fig, ax= plt.subplots(figsize=(16,9))
-    ax.plot(freq, raw, "ko", "Raw data")
-    ax.plot(freq, model, "r", label='Model')
-    ax.minorticks_on()
-    fig.legend()
-    fig.savefig(fname, dpi=600)
-    snitch.info(f"Saving figure to: {fname}")
-    return
-
-def write_fitsfile(fname, data, hdr):
-    snitch.info(f"Writing file to:      {fname}")
-    fits.writeto(fname, data, header=hdr, overwrite=True)
-
-
-def split_cube(fname, model_data, cube_hdr, exclude=None):
+def split_cube(oname, out_cube, in_cube, exclude=None):
     """
     Generate single channelised images rather than a stacked cube
     """
-    snitch.info(f"Unstacking / splitting cube:       {fname}")
-    clean_hdr = get_clean_header(hdr=cube_hdr)
-    
-    for chan in range(model_data.shape[0]):
+    snitch.info("Unstacking / splitting the output cube")
+    clean_hdr = in_cube.get_clean_header()
+
+    # name the images per channel like wsclean
+    # oname = oname + ("-" + f"{chan}".zfill(4) + ".fits")
+
+    for chan in range(out_cube.shape[0]):
         if (exclude is not None) and (chan in exclude):
             continue
 
-        clean_hdr.update({
-            f"BMAJ": cube_hdr.get(f"BMAJ{chan+1}"),
-            f"BMIN": cube_hdr.get(f"BMIN{chan+1}"),
-            f"BPA": cube_hdr.get(f"BPA{chan+1}")
-        })
+        clean_hdr.update(
+            {
+                "BMAJ": in_cube.header.get(f"BMAJ{chan+1}"),
+                "BMIN": in_cube.header.get(f"BMIN{chan+1}"),
+                "BPA": in_cube.header.get(f"BPA{chan+1}"),
+            }
+        )
 
-        # name the images per channel like wsclean
-        oname = fname+("-" + f"{chan}".zfill(4) + ".fits")
+        _oname = oname.with_stem(oname.stem + f"-{chan:04}.fits")
+        snitch.info(f"Writing:    {_oname}")
 
-        snitch.info(f"Writing:    {oname}")
+        save_fits(_oname, out_cube[chan], header=clean_hdr)
 
-        write_fitsfile(oname, model_data[chan], clean_hdr)
+
+def fit_the_data(freq, data, deg=2):
+    nf, nx, ny = data.shape
+    data = data.reshape(nf, -1)
+    snitch.info(f"Fitting data shape with {( nf, nx, ny)}")
+    if hasattr(data, "mask"):
+        snitch.info("Using masked fitting")
+        coeffs = np.ma.polyfit(freq, data, deg=deg)
+    else:
+        coeffs = np.polyfit(freq, data, deg=deg)
+    vander = np.polynomial.polynomial.polyvander(freq, deg)  # (F, degree+1)
+    fitted = vander @ coeffs  # (F, Nx*Ny)
+
+    residuals = data - fitted
+
+    return (
+        fitted.reshape(nf, nx, ny),
+        coeffs.reshape(coeffs.shape[0], nx, ny),
+        residuals.reshape(nf, nx, ny),
+    )
 
 
 def main(opts):
-    fname = opts.cube
+    global OUTDIR
+
+    cube = opts.cube
     mask = opts.mask
     freq_fname = opts.freqs
     deg = opts.deg
-    odir = opts.odir
+    OUTDIR = opts.outdir
 
+    if not freq_fname.exists():
+        snitch.error(f"Frequency file {freq_fname.absolute()} was not found.")
+        sys.exit(1)
+    if not cube.exists():
+        snitch.error(f"Cube file {cube.absolute()} was not found.")
+        sys.exit(1)
+    if mask and not mask.exists():
+        snitch.error(f"Mask file {mask.absolute()} was not found.")
+        sys.exit(1)
 
-    if not os.path.isdir(odir):
-        snitch.info(f"Creating directory: {odir}")
-        os.makedirs(odir)
-
-
-    # Read the freq file in GHZ
-    freqs = np.loadtxt(freq_fname) /1e9
-    # REad the image data
-    image_data = fits.getdata(fname).squeeze()
-
-    if opts.exclude is not None:
-        exclude = np.loadtxt(opts.exclude).astype(int)
-        image_data[exclude] = np.nan
-        image_data = np.ma.masked_invalid(image_data)
-        np.ma.set_fill_value(image_data, np.nan)
-
-        freqs[exclude] = np.nan
-        freqs = np.ma.masked_invalid(freqs)
-        np.ma.set_fill_value(freqs, np.nan)
-
-
-    # initialise 3-d arrays where models will be stored
-    # these will be shared arrays
-    model_data = np.zeros_like(image_data)
-    # 3-d arrays where coefficients will be stored
-    # e.g deg 3 will have three coefficients + a constant
-    coeffs_data = np.zeros((deg+1, *image_data.shape[1:]))
-
-    if mask is not None:
-        mask_data = fits.getdata(mask).squeeze()
-        ys, xs = np.where(mask_data > 0 )
-        pixels = zip(ys, xs)
+    if opts.exclude:
+        if ":" in opts.exclude or "," in opts.exclude:
+            excludes = selector(opts.exclude)
+        else:
+            snitch.info("Reading frequency selection as file")
+            opts.exclude = Path(opts.exclude)
+            if opts.exclude.exists():
+                excludes = np.loadtxt(opts.exclude).astype(int)
+            else:
+                snitch.error(
+                    f"The specified Exclusion file: {opts.exclude.absolute()} was not found."
+                )
+                sys.exit(1)
     else:
-        # since input image is cube, pick shape containing the x y axis only
-        ys, xs = image_data.shape[1:]
-        ys, xs = range(ys), range(xs)
-        pixels = product(ys, xs)
+        excludes = None
 
-    
-    snitch.info("Starting fitting")
-    for ypix, xpix in pixels:
-        snitch.debug(f"pixel x: {xpix}, y: {ypix}")
-        model, coeffs = polynomial_fit(x=freqs, y_raw=image_data[:, ypix, xpix], degree=deg)
-        model_data[:, ypix, xpix] = model
+    snitch.info(f"Creating/Overwriting directory {OUTDIR.absolute()}")
+    OUTDIR.mkdir(parents=True, exist_ok=True)
 
-        # check actuall y if coefficients will work ok here
-        coeffs_data[:, ypix, xpix] = coeffs
+    image = AstroImage(cube)
+    image.frequency = np.loadtxt(freq_fname) / 1e9
 
-    if hasattr(model_data, "mask"):
-        model_data = model_data.filled()
-        
-    hdr = fits.getheader(fname)
-    
+    if excludes is not None:
+        image.data[excludes, ...] = np.nan
+        image.frequency[excludes] = np.nan
+
+    if mask:
+        mask_im = AstroImage(mask)
+        mask_data = np.broadcast_to(~mask_im.data.astype(bool), image.data.shape)
+        image.data = np.ma.array(data=image.data, mask=mask_data)
+
+    model_data, coeffs, residuals = fit_the_data(image.frequency, image.data, deg=2)
+
+    model_hdr = deepcopy(image.header)
+
+    model_hdr.remove("HISTORY", remove_all=True)
+    clean_hdr = image.get_clean_header()
+
     if opts.unstack:
-        split_cube(os.path.join(odir, f"i-model-deg-{deg}"), model_data, hdr, exclude=exclude)
-    
-    write_fitsfile(os.path.join(odir, f"i-model-deg-{deg}.fits"), model_data, hdr)
+        split_cube(
+            OUTDIR.joinpath(f"sc-ifit-i-model-deg-{deg}.fits"),
+            model_data,
+            image,
+            exclude=excludes,
+        )
+    else:
+        # start saving files
+        save_fits(
+            OUTDIR.joinpath(f"sc-ifit-i-model-deg-{deg}.fits"),
+            model_data,
+            header=model_hdr,
+            overwrite=True,
+        )
+    save_fits(
+        OUTDIR.joinpath(f"sc-ifit-i-residual-deg-{deg}.fits"),
+        residuals,
+        header=clean_hdr,
+        overwrite=True,
+    )
 
-    hdr = get_clean_header(fname=fname)
     for _ in range(len(coeffs)):
-        write_fitsfile(os.path.join(odir, f"coefficient-{_}.fits"), coeffs_data[_], hdr)
+        save_fits(
+            OUTDIR.joinpath(f"sc-ifit-coefficient-{_}.fits"),
+            coeffs[_],
+            header=clean_hdr,
+            overwrite=True,
+        )
 
-    snitch.info("done")
+    snitch.info("---- Done. Bye :D ! ----")
 
 
 def console():
     """A console run entry point for setup.cfg"""
-    from scrappy.imageops.cli import new_fit_parser
-    opts = new_fit_parser().parse_args()
-    main(opts)
+    new_fit_app()
     snitch.info("Bye :D !")
 
 
 if __name__ == "__main__":
     console()
-    
-    """
-    python new-fit.py inputs/i-image-cube.fits frequencies.txt \
-        -mask ../../../surround.fits -deg 3 -o modeli-t3
-
-
-    python new-fit.py inputs/i-full-cube.fits all-freqs.txt \
-        -mask ../../../surround.fits -deg 3 -o fitting-t3-full-c \
-        -ex not-sel.txt -u
-    """
