@@ -4,7 +4,10 @@ from typing import Annotated, List, Optional
 
 import typer
 
-# snitch = config_logger()
+from scrappy.logging.config import configure_logger
+
+snitch = configure_logger()
+
 help_set = {"context_settings": {"help_option_names": ["-h", "--help"]}}
 
 sm_app = typer.Typer(**help_set)
@@ -13,6 +16,20 @@ new_fit_app = typer.Typer(**help_set)
 
 # TODO: configure logger under each *_cli() to enable outdir perhaps
 # TODO: do it just once for each module
+
+
+def validate_inputs(files: list[Path | None]):
+    """
+    Check that specified input files actually exist before the program starts
+    """
+    errors = []
+    for file in files:
+        if file is not None and not file.exists():
+            errors.append(f"Input file not found: {file} ")
+    if errors:
+        for _ in errors:
+            snitch.error(_)
+        raise typer.Exit(1)
 
 
 @sm_app.command()
@@ -172,6 +189,7 @@ def plot_bmaj_bmin_cli(
     Make a simple plot of of BMAJ and BMIN for the various
     specified frequency channels
     """
+    validate_inputs([idir])
 
     opts = SimpleNamespace(**locals())
     from scrappy.imageops.plot_bmaj_bmin import main
@@ -249,6 +267,7 @@ def new_fit_cli(
     """
     Fit a simple taylor polynomial on Stokes I cube, generating a model I
     """
+    validate_inputs([cube, freqs, mask])
     opts = SimpleNamespace(**locals())
     from scrappy.imageops.new_fit import main
 

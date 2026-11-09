@@ -4,9 +4,30 @@ from typing import Annotated
 
 import typer
 
-help_set = {"context_settings": {"help_option_names": ["-h", "--help"]}}
+from scrappy.logging.config import configure_logger
+
+snitch = configure_logger()
+
+help_set = {
+    "context_settings": {"help_option_names": ["-h", "--help"]},
+    "rich_markup_mode": "markdown",
+}
 rm_maps_app = typer.Typer(**help_set)
-los_rm_app = typer.Typer(rich_markup_mode="markdown", **help_set)
+los_rm_app = typer.Typer(**help_set)
+
+
+def validate_inputs(files: list[Path | None]):
+    """
+    Check that specified input files actually exist before the program starts
+    """
+    errors = []
+    for file in files:
+        if file is not None and not file.exists():
+            errors.append(f"Input file not found: {file} ")
+    if errors:
+        for _ in errors:
+            snitch.error(_)
+        raise typer.Exit(1)
 
 
 @rm_maps_app.command()
@@ -61,7 +82,7 @@ def rm_maps_cli(
         typer.Option("-ncore", "--ncore", help="Number of computing cores to use."),
     ] = 20,
     outdir: Annotated[
-        str,
+        Path,
         typer.Option(
             "-o", "--outdir", help="Where to deposit outputs from this script."
         ),
@@ -101,7 +122,18 @@ def rm_maps_cli(
 ):
     """
     Performs linear least squares fitting to Q and U image cubes.
+
+    ### Outputs
+    1. Fractional polarization (fpol.fits)
+    2. Linear polarization (lpol.fits)
+    3. Rotation measure (rm.fits)
+    4. Polarization angle map (pa.fits)
+    5. Intrinsic polarization angle (po.fits)
+    6. Magnetic field LIC map (mag-field.png)
+    7. SNR (snr.fits)
     """
+    in_files = [icube, qcube, ucube, freqs, mask]
+    validate_inputs(in_files)
     opts = SimpleNamespace(**locals())
     from scrappy.rmsynthesis.rmmap_x2 import main
 
@@ -194,6 +226,9 @@ def per_los_rm_static_cli(
     linear squares fit
     2. The data's RMSF
     """
+
+    in_files = [indir]
+    validate_inputs(in_files)
     opts = SimpleNamespace(**locals())
     from scrappy.rmsynthesis.rm_synthesis import main
 
