@@ -1,7 +1,9 @@
 from copy import deepcopy
 
 import typer
+import xarrayfits as xf
 from astropy.io import fits
+from astropy.wcs import WCS
 
 from scrappy.logging.config import configure_logger
 
@@ -11,9 +13,11 @@ snitch = configure_logger()
 class AstroImage:
     _image_id = 0
 
-    def __init__(self, fname):
+    def __init__(self, fname, chunked=False, chunk_size=1024):
         snitch.info(f"Loading image: {fname.resolve()}")
         self.fname = fname
+        self.chunked = chunked
+        self.chunk_size = chunk_size
         self._is_cube = None
         self._hdr = self._get_header()
         self._data = None
@@ -44,7 +48,13 @@ class AstroImage:
     @property
     def data(self):
         if self._data is None:
-            self._data = fits.getdata(self.fname).squeeze()
+            if self.chunked:
+                (self._data,) = xf.xds_from_fits(
+                    str(self.fname), chunks={2: self.chunk_size, 3: self.chunk_size}
+                )
+                self._data = self._data.hdu
+            else:
+                self._data = fits.getdata(self.fname).squeeze()
         return self._data
 
     @data.setter
@@ -120,3 +130,50 @@ class AstroImage:
             snitch.debug(f"Deleting {_} key from header")
             nhdr.remove(_, remove_all=True)
         return nhdr
+
+    def get_clean_2d_header(self):
+        """
+        Only the important stuff but for 2-D fits images
+        """
+        nhdr = self.get_clean_header()
+
+        main_keys = [
+            "SIMPLE",
+            "BITPIX",
+            "NAXIS",
+            "NAXIS1",
+            "NAXIS2",
+            # 'EXTEND', 'BUNIT','BMAJ','BMIN','BPA',
+            "EQUINOX",
+            "BTYPE",
+            "TELESCOP",
+            "OBSERVER",
+            "OBJECT",
+            "SPECSYS",
+            "DATE-OBS",
+            # 'ORIGIN', "WSCDATAC", "WSCVDATE","WSCVERSI"
+        ]
+        extra = []
+
+        naxes = 3
+        for i in range(1, 4):
+            for key in ["CTYPE", "CRPIX", "CRVAL", "CDELT", "CUNIT"]:
+                if f"{key}{i}" in "CRVAL3 CDELT3".split():
+                    continue
+                extra.append(f"{key}{i}")
+        main_keys.extend(extra)
+
+        main_keys = {key: nhdr.get(key) for key in main_keys}
+        main_keys.update({"NAXIS": naxes, "CUNIT3": None, "CTYPE3": None})
+
+        nhdr = WCS(nhdr, preserve_units=True)
+        if nhdr.naxis > naxes:
+            for _ in range(nhdr.naxis - naxes):
+                nhdr.dropaxis(-1)
+        nhdr = nhdr.to_header()
+
+        temp = nhdr.fromkeys(main_keys.keys())
+        temp.update(main_keys)
+        temp.add_history("Made by scrap.py")
+        temp.add_history("https://www.lexyandati.com/scrappy/sc-rmmap/")
+        return temp
