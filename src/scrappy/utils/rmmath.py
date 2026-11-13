@@ -3,6 +3,8 @@ Some useful equations from Brentjens 2005
 Useful for some of the usual suspect calculations
 
 
+Also contained a class for performing RM synthesis
+
 In this code:
 
 RM: rotation measure
@@ -10,16 +12,276 @@ SQ: squared
 SQRT: sqaure root
 """
 
+from dataclasses import dataclass
 from typing import Iterable, Union
 
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 from astropy.constants import c
 
+from scrappy.logging.config import configure_logger
+
+matplotlib.use("Agg")
+
+snitch = configure_logger(level="DEBUG")
 
 # Get the value from this quantity
 SPEED_OF_LIGHT = c.value
 
 type FloatOrFloats = Union[float, Iterable[float]]
+
+
+def simple_lsq(x):
+    # a simple conversion from frequency to lambda squared
+    return (SPEED_OF_LIGHT / x) ** 2
+
+
+@dataclass
+class RMResult:
+    phi_range: np.ndarray
+    fclean: np.ndarray
+    fdirty: np.ndarray
+    fwhm: float
+    peak_phi: float
+    peak_amp: float
+
+
+class RMSynthesis:
+    """
+    A group of methods used to perform rotation measure synthesis
+    on a 3-d data cube.
+    """
+
+    @classmethod
+    def debug_plot_shift(cls, rmsf_shifts, xaxis=None, skip=50, prefix=None):
+        if prefix is None:
+            prefix = "rmsf-shift-phi"
+
+        for i in range(0, len(rmsf_shifts), skip):
+            plt.close("all")
+            plt.plot(xaxis, rmsf_shifts[i])
+            print("plotting rmsf-shift: ", i)
+            plt.savefig(f"{prefix}-{i}.png")
+        return
+
+    @classmethod
+    def rm_synthesis(
+        cls, wave_sq: np.array, phi_range: np.array, p_lambda: np.ndarray | float
+    ) -> np.ndarray:
+        """
+        Computes Faraday Spectra using RM-Synthesis
+        as defined by Brentjens and de Bruyn (2005)
+        A linear algebraic implementation
+
+        Parameters
+        ----------
+        wave_sq: 1-d array
+            wavelength squared
+        phi_range: 1-d array
+            Faraday depth range for which we are searching for a signal
+        p_lambda: 3-d array
+            Polarised/(fractional polarised) intensity data cube of shape (freq, ypix, xpix)
+
+        Returns
+        -------
+        fdata : 3-d array
+            A dirty Faraday spectrum of shape(phi_range.size, ypix, xpix)
+        """
+
+        n_waves = len(wave_sq)
+        wave_sq0 = wave_sq.mean()
+
+        # Shape: (len(phi_range), len(wave_sq))
+        kernels = np.exp(-2j * np.outer(phi_range, wave_sq - wave_sq0))
+
+        if isinstance(p_lambda, np.ndarray) and p_lambda.ndim > 2:
+            _, nx, ny = p_lambda.shape
+            p_lambda = p_lambda.reshape(n_waves, -1)
+
+            fdata = (kernels @ p_lambda / n_waves).reshape(phi_range.size, nx, ny)
+        else:
+            fdata = kernels @ p_lambda / n_waves
+
+        return fdata
+
+    # @classmethod
+    # def _defunct_rm_clean0(cls, wave_sq, phi_range, dirty_fspectrum, niter=500, gain=0.1,
+    #             derotate=True, threshold=None):
+
+    #     fspec_dirty = dirty_fspectrum.copy()  # don't modify input in place
+
+    #     # Restoring beam
+    #     if derotate:
+    #         fwhm = 3.8 / abs(wave_sq[0] - wave_sq[-1])
+    #     else:
+    #         fwhm = 2 / (wave_sq[-1] + wave_sq[0])
+    #     sigma = fwhm / 2.35482
+    #     gaussian_norm = np.exp(-0.5 * (phi_range / sigma) ** 2)
+
+    #     # Auto threshold
+    #     if threshold is None:
+    #         threshold = 1 * np.std(np.abs(fspec_dirty))
+
+    #     # # Precompute RMSF shifts
+    #     pad = abs(phi_range[-1]) * 2
+    #     dpad = abs(phi_range[0] - phi_range[1])
+    #     phi_pad = np.arange(-pad, pad+1, dpad)
+    #     dshift = int(pad/(2.0 * dpad))
+
+    #     rmsf_fixed = cls.rm_synthesis(wave_sq, phi_pad,
+    #         np.ones(len(wave_sq), dtype=complex))
+
+    #     nx, ny = dirty_fspectrum.shape[1:]
+    #     ix, iy = np.indices((nx, ny))
+    #     components = np.zeros_like(dirty_fspectrum, dtype=complex)
+
+    #     for n in range(niter):
+    #         f_amp = np.abs(fspec_dirty)
+    #         peak = f_amp.max()
+
+    #         # if peak < threshold:
+    #         #     print(f"Converged after {n} iterations")
+    #         #     break
+
+    #         ind = np.argmax(f_amp, axis=0)              # (5, 5)
+    #         f_comp = fspec_dirty[ind, ix, iy] * gain    # (5, 5)
+    #         components[ind, ix, iy] += f_comp
+
+    #         # Replicate original exactly, per pixel
+    #         for xi in range(nx):
+    #             for yi in range(ny):
+    #                 dirac = np.zeros(len(phi_range))
+    #                 dirac[ind[xi, yi]] = 1
+    #                 rmsf = signal.convolve(rmsf_fixed, dirac, mode='same')
+    #                 rmsf = rmsf[dshift:-dshift+1]
+    #                 fspec_dirty[:, xi, yi] -= f_comp[xi, yi] * rmsf
+
+    #     fspec_clean = fspec_dirty + (
+    #         convolve1d(components.real, gaussian_norm, axis=0) +
+    #         1j * convolve1d(components.imag, gaussian_norm, axis=0))
+
+    #     return fspec_clean, components, fwhm
+
+    @classmethod
+    def rm_clean(
+        cls,
+        lam2,
+        phi_range,
+        dirty_fspectrum,
+        niter=500,
+        gain=0.1,
+        derotate=True,
+        threshold=0.0,
+    ):
+        """
+        lam2:             (n_chan,)
+        phi_range:        (n_phi,)  uniformly spaced
+        fspec_dirty:  (n_phi,) or (n_phi, nx, ny)
+        returns:          fclean, components (same shape as input), fwhm
+        """
+        fspec_dirty = dirty_fspectrum.copy()  # don't modify input in place
+
+        shape = fspec_dirty.shape
+        n_phi = shape[0]
+
+        # Work on a copy, flattened to (n_phi, n_pixels)
+        fres = np.array(fspec_dirty, dtype=complex).reshape(n_phi, -1)
+        pix = np.arange(fres.shape[1])
+
+        # Restoring beam width
+        if derotate:
+            fwhm = 3.8 / abs(lam2[0] - lam2[-1])
+        else:
+            fwhm = 2 / (lam2[-1] + lam2[0])
+        sigma = fwhm / 2.35482
+
+        # RMSF on offsets -(n_phi-1) ... +(n_phi-1): exactly 2*n_phi - 1 points
+        dphi = phi_range[1] - phi_range[0]
+        phi_pad = dphi * np.arange(-(n_phi - 1), n_phi)
+        rmsf_fixed = cls.rm_synthesis(
+            lam2, phi_pad, np.ones(len(lam2), dtype=complex)
+        )
+        center = n_phi - 1  # index of the RMSF peak
+
+        # rmsf_cols[:, i] = RMSF centred on phi_range[i], sampled on phi_range
+        rmsf_cols = np.array(
+            [rmsf_fixed[center - i : center - i + n_phi] for i in range(n_phi)]
+        ).T.copy()  # (n_phi, n_phi)
+
+        # cls. debug_plot_shift(rmsf_cols, xaxis=phi_range, skip=50, prefix="rm-shifts-new")
+        components = np.zeros_like(fres)
+
+        if threshold is None:
+            threshold = 1 * np.std(np.abs(fspec_dirty))
+
+        for n in range(niter):
+            f_amp = np.abs(fres)
+            ind = np.argmax(f_amp, axis=0)  # peak index per pixel
+            active = f_amp[ind, pix] > threshold  # pixels still being cleaned
+
+            if not active.any():
+                print(f"Converged after {n} iterations")
+                break
+
+            f_comp = np.where(active, fres[ind, pix] * gain, 0)
+            components[ind, pix] += f_comp
+            fres -= rmsf_cols[:, ind] * f_comp  # (n_phi, n_pixels)
+
+        # Restore: peak-1 Gaussian centred on each component, plus residuals
+        restore = np.exp(
+            -0.5 * ((phi_range[:, None] - phi_range[None, :]) / sigma) ** 2
+        )
+        fclean = restore @ components + fres
+
+        return fclean.reshape(shape), components.reshape(shape), fwhm
+
+        @classmethod
+        def rmsynth_pipeline(
+            cls,
+            wave_sq,
+            pol_data,
+            phi_max=500,
+            phi_step=5,
+            niter=1000,
+            gain=0.1,
+            derotate=True,
+            threshold=None,
+        ):
+            # Validate
+            assert len(wave_sq) == len(
+                pol_data
+            ), "wave_sq and pol_data must have same length"
+            assert np.iscomplexobj(pol_data), "pol_data must be complex (Q + iU)"
+
+            # Build phi axis (guaranteed zero at centre)
+            phi_range = np.arange(-phi_max, phi_max + phi_step, phi_step)
+
+            # RM synthesis
+            fdirty = cls.rm_synthesis(wave_sq, phi_range, pol_data)
+
+            # RMCLEAN
+            fclean, fcomp, fwhm = cls.rmclean(
+                wave_sq,
+                phi_range,
+                fdirty,
+                niter=niter,
+                gain=gain,
+                derotate=derotate,
+                threshold=threshold,
+            )
+
+            # Peak
+            peak_ind = np.argmax(np.abs(fclean))
+
+            return RMResult(
+                phi_range=phi_range,
+                fclean=fclean,
+                fdirty=fdirty,
+                fwhm=fwhm,
+                peak_phi=phi_range[peak_ind],
+                peak_amp=np.abs(fclean[peak_ind]),
+            )
 
 
 def chan_width_wavelengths(center_freq: float, chan_width: float) -> float:
@@ -40,9 +302,6 @@ def freq_sqrt(lambda_sq: FloatOrFloats) -> FloatOrFloats:
     return freq_ghz
 
 
-simple_lsq = lambda x: (SPEED_OF_LIGHT / x) ** 2
-
-
 def lambda_sqd(center_freq: float, chan_width: float) -> float:
     """Equation 34
     Calculate the center frequency in lambda squared for a single channel
@@ -61,16 +320,14 @@ def lambda_sqd_err(
     """
     lambda_sum = (lambda_sq**2 - lambda_sq_0**2).sum()
 
-    assert n_chans == lambda_sq.size, (
-        f"Provided value of n_chans {n_chans} != size of wavelengths squared provided: {lambda_sq.size}"
-    )
+    assert (
+        n_chans == lambda_sq.size
+    ), f"Provided value of n_chans {n_chans} != size of wavelengths squared provided: {lambda_sq.size}"
     err_lambda = np.sqrt(lambda_sum / (n_chans - 1))
     return err_lambda
 
 
-def linear_polzn(
-    stokes_Q: FloatOrFloats, stokes_U: FloatOrFloats
-) -> FloatOrFloats:
+def linear_polzn(stokes_Q: FloatOrFloats, stokes_U: FloatOrFloats) -> FloatOrFloats:
     """complex linear polarised intensity"""
     linear = stokes_Q + 1j * stokes_U
     return linear
@@ -110,9 +367,9 @@ def polzn_angle_error(
 ) -> FloatOrFloats:
     """Equation 54 and 55"""
     lpol = np.abs(linear_polzn(stokes_Q, stokes_U))
-    err_sq = (
-        (stokes_U**2 * stokes_Q_err**2) + (stokes_Q**2 * stokes_U_err**2)
-    ) / (4 * lpol**4)
+    err_sq = ((stokes_U**2 * stokes_Q_err**2) + (stokes_Q**2 * stokes_U_err**2)) / (
+        4 * lpol**4
+    )
     return np.sqrt(err_sq)
 
 
