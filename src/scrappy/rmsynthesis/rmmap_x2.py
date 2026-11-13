@@ -4,296 +4,324 @@
 Courtesy of Lerato
 Edited by Lexy
 """
-import argparse
-import logging
-import os
-import time
-import sys
-import warnings
 
+from itertools import product
+from pathlib import Path
+
+import dask.array as da
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
+from astropy.io import fits
+from pydantic import validate_call
+from scipy import signal
 
-from concurrent import futures
-from functools import partial
-
-from scrappy.utils.rmmath import frac_polzn_error, frac_polzn, linear_polzn
 from scrappy.logging.config import configure_logger
-from scrappy.utils.genutils import make_out_dir, read_npz
-from scrappy.utils.termcolours import avail_color_functions
-# from scrappy.logging.config import setup_logging
+from scrappy.utils.astroimage import AstroImage
+from scrappy.utils.genutils import save_fits
+from scrappy.utils.rmmath import (
+    SPEED_OF_LIGHT,
+    RMSynthesis,
+    frac_polzn,
+)
 
+matplotlib.use("Agg")
 
 snitch = configure_logger(level="DEBUG")
 
 
-from ipdb import set_trace
+OUTDIR = None
+
+GET_FRAC_POL = False
 
 
-def import_heavy_modules():
-    """Import heavy modules only when needed to reduce startup time."""
-    global fits, signal
-    from astropy.io import fits
-    from scipy import signal
-
-    # make the colouring functions available
-    globals().update(avail_color_functions())
-    return
+@validate_call
+def make_new_2d_fits(fname: Path, hdr):
+    nx, ny = hdr["NAXIS2"], hdr["NAXIS1"]
+    data = np.empty((nx, ny))
+    save_fits(fname, data=data, header=hdr, overwrite=True)
+    return fname
 
 
-def make_template_header(fname):
-    snitch.info(f"Creating template FITS header using the header from: {bold_blue(fname)}")
-    header = fits.getheader(fname)
+@validate_call
+def debug_diagnostic_plots(*datas: tuple, xaxis=None, fname: Path = "comparison"):
+    fname = fname.with_suffix(".png")
+    plt.close("all")
 
-    important_keys = [
-        'SIMPLE', 'BITPIX', 'NAXIS', 'NAXIS1', 'NAXIS2', 'EXTEND', 'BUNIT','BMAJ','BMIN','BPA','EQUINOX','BTYPE','TELESCOP',
-        'OBSERVER','OBJECT','ORIGIN',"SPECSYS","DATE-OBS","WSCDATAC",
-        "WSCVDATE","WSCVERSI"
-    ]
-    extra = []
-    for i in range(1, 4):
-        for key in ['CTYPE', 'CRPIX', 'CRVAL', 'CDELT', 'CUNIT']:
-            if f"{key}{i}" in "CRVAL3 CDELT3".split():
-                continue
-            extra.append(f"{key}{i}")
-    important_keys.extend(extra)
-
-    template_header = header.fromkeys(important_keys)
-    template_header.update({key: header.get(key) for key in important_keys})
-    template_header.update(dict(NAXIS=3, BTYPE=None, BUNIT=None, CUNIT3=None))
-    template_header.add_comment("Made by scrap.py")
-    template_header.add_comment("https://www.lexyandati.com/scrappy/sc-rmmap/")
-
-    snitch.debug("Template FITS header created")
-    return template_header
+    for i, data in enumerate(datas):
+        plt.plot(xaxis, data, label=f"p-{i}")
+    print(f"Plotting --> {fname}")
+    plt.legend()
+    plt.savefig(fname)
 
 
-def make_template_image(oname, header, data=None, dtype=float):
-    snitch.debug("Creating output image")
-    if data is None:
-        nx, ny = [header.get(k) for k in "NAXIS1 NAXIS2".split()]
-        data = np.empty((nx,ny), dtype=dtype)
-    hdu = fits.PrimaryHDU (data=data, header=header)
-    hdu.writeto(oname, overwrite=True)
-    snitch.info(f"Successfully initialised image: {bold_green(oname)}")
-    return
+# def read_freq_file(filename):
+#     _, ext = os.path.splitext(filename)
+
+#     reader = {
+#         ".txt": np.loadtxt,
+#         ".dat": np.loadtxt,
+#         ".npy": read_npz,
+#         ".npz": read_npz,
+#     }
+
+#     try:
+#         freqs = reader[ext.lower()](filename)
+
+#         if isinstance(freqs, dict):
+#             snitch.info("The following keys were found in frequency file")
+#             snitch.info("{}".format(bold_blue(list(freqs.keys()).join(", "))))
+#             snitch.info(f"Using {freqs.get(freqs.keys()[0])}")
+#             freqs = freqs.get(freqs.keys()[0])
+#         elif isinstance(freqs, tuple):
+#             freqs = np.array(freqs)
+
+#     except ValueError:
+#         snitch.error(f"Unable to reaa {red_bold(filename)}. Please check on it")
+#         sys.exit()
+#     return freqs
 
 
-def read_image_cube(fname):
+def apply_mask(filename, data):
+    mask = fits.getdata(filename)
+    mask.dtype = bool
+    mask = ~mask
+    mask = np.broadcast_to(mask, shape=data.shape)
 
-    chunk_size = 1024
+    if isinstance(data, np.ndarray):
+        data = np.ma.MaskedArray(data=data, mask=mask, fill_value=0)
+    elif isinstance(data, da.Array):
+        data = da.ma.masked_array(data=data, mask=mask, fill_value=0)
+        # we assume that its a dask array
 
-    snitch.info(f"Reading image cube: {fname}")
-    # image cube is probably 4-d
-    xim_dataset = xf.xds_from_fits(fname, 
-        chunks={i: chunk_size for i in range(2,4)})[0].squeeze()
-
-    return xim_dataset
-
-
-def check_file(filename):
-    """Valdidate that the inputed files exist"""
-    try:
-        is_valid = os.path.isfile(filename)
-        snitch.debug(f"{filename} is available")
-    except:
-        is_valid = False
-        snitch.error(f"{bold_red(filename)} was not found. Please check the directory again")
-    return is_valid
+    # return data.filled()? # a little slow but can be explored if necessary
+    return data
 
 
-def validate_required_input_files(args):
-    snitch.debug("Validating input files")
-    reqs = "qfits ufits ifits freq maskfits".split()
-    invalid = []
-    for fil in reqs:
-        if not check_file(args.__getattribute__(fil)):
-            invalid.append(f"{bold_red("Missing")}: {args.__getattribute__(fil)}")
-    if args.prefix is not None:
-        if os.path.sep in args.prefix:
-            # then this is a directory with a prefix name, reinitialize
-            output_dir = make_out_dir(os.path.dirname(args.prefix))
-        else:
-            # interpret as just a prefix
-            output_dir = os.path.join(os.path.curdir, args.prefix)
-            args.prefix = output_dir
+# def chunked_cube_read(fname, xchunk=1024, ychunk=1024):
+#     def get_image_slices(xiters, yiters):
+#         xs, ys = 0, 0
+#         sections = []
+#         for xiter in range(xiters):
+#             for yiter in range(yiters):
+#                 xstop = xs + xchunk
+#                 ystop = ys + ychunk
+#                 # :, slice(xs, xstop), slice(yx, ystop)
+#                 snitch.debug(
+#                     f"This is slice {xiter, yiter}: as ':, slice{xs, xs+xchunk}, slice{ys, ys+xchunk}'"
+#                 )
+#                 sections.append(
+#                     (slice(None), slice(xs, xs + xchunk), slice(ys, ys + ychunk))
+#                 )
+#                 ys += ychunk
+#             xs += xchunk
+#             ys = 0
+#         return sections
 
-    if len(invalid) > 0:
-        snitch.info(f"{len(invalid)} files have not been found")
-        for inv in invalid:
-            snitch.info(invalid)
-        sys.exit()
-    snitch.info(f"All required input files {bold_green('exist')}")
-    return
+#     GB = 2**30
+#     MB = 2**20
 
+#     # data structure is freq x xaxis x yaxis
+#     # for RM Synthesis , freq axis MUST BE FULL, DO NOT CHUNK!!
+#     xchunk, ychunk = 1024, 1024
 
-def read_freq_file(filename):
-    _, ext = os.path.splitext(filename)
+#     hdr = fits.getheader(fname)
+#     nx, ny, nfreq = tuple(map(hdr.get, "NAXIS1 NAXIS2 NAXIS3".split()))
 
-    reader = {
-        ".txt": np.loadtxt,
-        ".dat": np.loadtxt,
-        ".npy": read_npz,
-        ".npz": read_npz
-    }
+#     xiters = ceil(nx / xchunk)
+#     yiters = ceil(ny / ychunk)
 
-    try:
-        freqs = reader[ext.lower()](filename)
+#     sections = get_image_slices(xiters, yiters)
 
-        if isinstance(freqs, dict):
-            snitch.info(f"The following keys were found in frequency file")
-            snitch.info("{}".format(bold_blue(list(freqs.keys()).join(', '))))
-            snitch.info(f"Using {freqs.get(freqs.keys()[0])}")
-            freqs = freqs.get(freqs.keys()[0])
-        elif isinstance(freqs, tuple):
-            freqs = np.array(freqs)
+#     with fits.open(fname, mmap=True, mode="denywrite") as hdul:
+#         hdu = hdul[0]
 
-    except ValueError:
-        snitch.error(f"Unable to reaa {red_bold(filename)}. Please check on it")
-        sys.exit()
-    return freqs
-    
+#         hdu.data = hdu.data.squeeze()
 
-def prep_output_files(template_file, prefix):
-    ofiles = {
-        "p0_hdr": dict(ctype='p', unit='ratio'),
-        "PA_hdr": dict(ctype='PA', unit='radians'),
-        "RM_hdr": dict(ctype='RM', unit='rad/m^2'),
-        "pf_hdr": dict(ctype='FPOL', unit='x100%'),
-        "lp_hdr": dict(ctype='LPOL', unit='unit'),
-        "snr_hdr": dict(ctype='SNR', unit='unit'),
-    }
+#         data_size = hdu.size / GB
+#         snitch.info(f"This data is {bold_yellow(data_size)} GB in size")
+#         snitch.info(f"The data is chunked into {len(sections)} sections")
 
-    temp_header = make_template_header(template_file)
-    for ofile in ofiles:
-        fname = os.path.join(f"{prefix}-{ofile}.fits")
+#         for i, section in enumerate(sections):
+#             snitch.debug(f"Yielding section {i}: {section}")
+#             yield hdu.section[section]
 
-        snitch.debug(f"Setting header units for file: {bold_cyan(ofile)}")
-        snitch.debug(", ".join([f"{green(k)}: {v}" for k, v in ofiles[ofile].items()]))
-        
-        temp_header.update(ofiles[ofile])
-        make_template_image(fname, temp_header)
-        ofiles[ofile] = fname
-    
-    return ofiles
+#     return
 
 
+# def main2(opts):
+#     """
+#     1. Validate that the input files exits
+#     2. Read the frequency file
+#     3. Read the actual data files
+#     4. If mask is available, read that mask
+#     5. Now mask the data (just one, the rest ops with MA will follow suite)
+#     6. Concoct the required datas, fpol, lpol and whatever
+#     -- Maybe write out the FITS data templates at this point?
+#     7. Perform RM-synthesis on that data
+#     8
+#     """
+
+#     validate_required_input_files(args)
+#     frequencies = read_freq_file(opts.freq)
+#     wavelength_sq = simple_lsq(frequencies)
+
+#     # ----------------------------------------------------------------------
+#     # testing chunked reading
+
+#     tqdata = chunked_cube_read(opts.qcube)
+#     tudata = chunked_cube_read(opts.ucube)
+#     for sect, (qdata, udata) in enumerate(zip(tqdata, tudata), 1):
+#         pdata = linear_polzn(qdata, udata)
+#         sumn = rm_synthesis(
+#             wavelength_sq,
+#             pdata,
+#             phi_max=opts.max_depth,
+#             phi_step=opts.depth_step,
+#             niter=opts.niters,
+#             gain=0.1,
+#             plot=False,
+#             derotate=False,
+#         )
+#         print("-----------")
+
+#     # ----------------------------------------------------------------------
+
+#     # read the data files in
+#     read = "dask"  # for testing
+#     qdata = read_image_cube(opts.qcube, reader=read)
+#     udata = read_image_cube(opts.ucube, reader=read)
+
+#     if opts.mask:
+#         # mask this one thing and every other operation will be masked
+#         qdata = apply_mask(opts.mask, qdata)
+
+#     if opts.icube:
+#         idata = read_image_cube(opts.icube)
+#         fp_data = frac_polzn(idata, qdata, udata)
+
+#     pdata = linear_polzn(qdata, udata)
+
+#     output_files = prep_output_files(opts.qcube, OUTDIR)
+
+#     # RM-synthesis now
+#     # Options
+#     # 1. process the entire dataset
+#     # 2. Manually chunk the data (maybe 1k x 1k x 4k)? and process iteratively
+#     # 3. Use dask chunking
+
+#     snr = opts.snr
 
 
 # ---------------------------- End of New Functions ------------------------
 
 
 def faraday_to_lambda(lam2, phi_range, pol_lam2):
-
     """
-    Computes Faraday Spectra using RM-Synthesis 
+    Computes Faraday Spectra using RM-Synthesis
     as defined by Brentjens and de Bruyn (2005)
+
+    Returns:
+    fdata: shape(phi_range.size)
 
     """
 
     N = len(lam2)
     l20 = lam2.mean()
     fdata = np.zeros([len(phi_range)], dtype=complex)
-    
 
     for k, phi in enumerate(phi_range):
-        fdata[k] = pow(N, -1) * np.sum(pol_lam2 * 
-                np.exp(-2j * (lam2-l20) * phi))   
+        kernel = np.exp(-2j * (lam2 - l20) * phi)
+        fdata[k] = pow(N, -1) * np.sum(pol_lam2 * kernel)
     return fdata
 
 
-
 def rm_clean(lam2, phi_range, fspectrum, niter=500, gain=0.1, derotate=True):
+    # Lexy, copy the value and not the reference
+    fspectrum = fspectrum.copy()
 
     if derotate:
-        fwhm = (3.8/ abs(lam2[0]-lam2[-1]))
+        fwhm = 3.8 / abs(lam2[0] - lam2[-1])
     else:
         # use the peak of the real component for the gaussian as the CLEAN beam
         # according to rudnick and cotton 2023
-        fwhm = 2 / (lam2[-1]+lam2[0])
+        fwhm = 2 / (lam2[-1] + lam2[0])
 
-    sigma = (fwhm/2.35482)
-    Gauss = np.exp(-0.5 * (phi_range/sigma)**2) 
+    sigma = fwhm / 2.35482
+    Gauss = np.exp(-0.5 * (phi_range / sigma) ** 2)
 
     # I am padding here to avoid edge effects.
-    
-    pad = abs(phi_range[-1]) * 2
-    dpad = abs(phi_range[0]-phi_range[1])
-    phi_pad = np.arange(-pad, pad, dpad)
-    dshift = int(pad/(2.0 * dpad))
 
-    rmsf_fixed = faraday_to_lambda(lam2, phi_pad, 1) 
+    pad = abs(phi_range[-1]) * 2
+    dpad = abs(phi_range[0] - phi_range[1])
+    phi_pad = np.arange(-pad, pad, dpad)
+    dshift = int(pad / (2.0 * dpad))
+
+    rmsf_fixed = faraday_to_lambda(lam2, phi_pad, 1)
+    debug_diagnostic_plots(rmsf_fixed, xaxis=phi_pad, fname="orig-fixed-rmsf")
     components = np.zeros([len(phi_range)], dtype=complex)
 
-    for n in range(niter):
+    for _n in range(niter):
         temp = np.zeros([len(phi_range)], dtype=complex)
         f_amp = np.absolute(fspectrum)
         ind = np.where(f_amp == f_amp.max())[0]
         f_comp = fspectrum[ind[0]] * gain
         temp[ind[0]] = f_comp
         components += temp
-    
+
+        # # replacing
         dirac = np.zeros(len(phi_range))
         dirac[ind[0]] = 1
-        rmsf = signal.convolve(rmsf_fixed, dirac, mode='same')
-        rmsf = rmsf[dshift:-dshift+1]
- 
-        fspectrum -= f_comp * rmsf
+        rmsf = signal.convolve(rmsf_fixed, dirac, mode="same")
+        rmsf_center = rmsf[dshift : -dshift + 1]
+
+        fspectrum -= f_comp * rmsf_center
 
     Fres = fspectrum
-    fclean = signal.convolve(components, Gauss, mode='same') + Fres
+    fclean = signal.convolve(components, Gauss, mode="same") + Fres
 
     return fclean, components, fwhm
 
 
-def rm_synthesis(lam, pdata, phi_max=500, phi_step=5, niter=1000, gain=0.1, plot=False, derotate=True):
-
-
-    phi_range =  np.arange(-phi_max, phi_max+phi_step, phi_step)
-    # this ensures that the middle value is zero. 
+def rm_synthesis(
+    lam,
+    pdata,
+    phi_max=500,
+    phi_step=5,
+    niter=1000,
+    gain=0.1,
+    plot=False,
+    derotate=True,
+):
+    phi_range = np.arange(-phi_max, phi_max + phi_step, phi_step)
+    # this ensures that the middle value is zero.
     fdirty = faraday_to_lambda(lam, phi_range, pdata)
-    
-    
-    fclean, fcomp, fwhm = rm_clean(lam, phi_range, fdirty, 
-                    niter=niter, gain=gain, derotate=derotate)
 
+    fclean, fcomp, fwhm = rm_clean(
+        lam, phi_range, fdirty, niter=niter, gain=gain, derotate=derotate
+    )
 
     return phi_range, fclean, fdirty, fwhm
 
 
-
-def read_data(image, freq=True):
-                                                                              
-    """ Read and return image data: ra, dec and freq only"""
-    with fits.open(image) as hdu:
-        imagedata = hdu[0].data
-        header = hdu[0].header
-    imslice = np.zeros(imagedata.ndim, dtype=int).tolist()
-    imslice[-1] = slice(None)
-    imslice[-2] = slice(None)
-    if freq:
-        imslice[-3] = slice(None)
-    snitch.info('>>> Image %s loaded sucessfully. '%image)
-    return imagedata[tuple(imslice)], header
-
-
-#-==========================================================================
+# -==========================================================================
 # some RM noise stuff
-#-==========================================================================
+# -==========================================================================
 def rmtools_median_abs_dev(a, c=0.6745, axis=None):
     """
     Median Absolute Deviation along given axis of an array:
     median(abs(a - median(a))) / c
     c = 0.6745 is the constant to convert from MAD to std
     """
-    
-    a = np.ma.masked_where(a!=a, a)
+
+    a = np.ma.masked_where(a != a, a)
     if a.ndim == 1:
         d = np.ma.median(a)
         m = np.ma.median(np.ma.fabs(a - d) / c)
     else:
         d = np.ma.median(a, axis=axis)
         if axis > 0:
-            aswp = np.ma.swapaxes(a,0,axis)
+            aswp = np.ma.swapaxes(a, 0, axis)
         else:
             aswp = a
         m = np.ma.median(np.ma.fabs(aswp - d) / c, axis=0)
@@ -306,489 +334,432 @@ def median_abs_dev(arr):
     mad = np.nanmedian(np.abs(arr - np.nanmean(arr)))
     return mad
 
+
 def mean_abs_dev(arr):
-    """Mean Absolute Deviation (MAD) statistic """
+    """Mean Absolute Deviation (MAD) statistic"""
     mad = np.nansum(np.abs(arr - np.nanmean(arr))) / arr.size
     return mad
+
 
 def root_mean_square(arr):
     rms = np.sqrt(np.nanmean(np.square(arr)))
     return rms
-    
-
-def peak_snr(fdf, rmsf_fwhm, phi_range):
-    """
-    With individual noise for Q and U because they are not the same
-
-    1. Get the complex FDF
-    2. Get its amplitudeqlq
-    3. get index of at peak amplitude
-    4. Get peak amplitude
-    5. mask the THE WIDTH of the FDF peak
-    6. select all the unmasked, and remaining values of the absolute FDF
-    7. if fraction of data remaining is less than 30%, ie if more 70pc of the data is flagged:
-            - MAD
-            - RMS of the unflagged fdf
-        otherwise, using the flagged data:
-            - MAD
-            - RMS to generate the noise
-
-        This will give the fdf noise
-    8. snr is therefore peak fdf to this noise
-    """
-    fdf_amp = np.abs(fdf)
-    
-    max_peak = np.max(fdf_amp)
-    max_peak_loc = np.nanargmax(fdf_amp[1:-1])
-
-    # find the phi range where the main rmsf peak is located
-    phi_delta = np.nanmin(np.diff(phi_range))
-    
-    rmsf_fwhm_channel = np.ceil(rmsf_fwhm/phi_delta)
-    rmsf_width_start = int(max(0, max_peak_loc - rmsf_fwhm_channel*2))
-    rmsf_width_end = int(max(0, max_peak_loc + rmsf_fwhm_channel*2))
-
-    flagged_fdf_amp = np.copy(fdf_amp)
-    flagged_fdf_amp[rmsf_width_start: rmsf_width_end] = np.nan
-    flagged_fdf_amp = np.ma.masked_invalid(flagged_fdf_amp).compressed()
-
-    if flagged_fdf_amp.size / fdf_amp.size < 0.3:
-        rms = root_mean_square(fdf_amp)
-        mad = median_abs_dev(fdf_amp)
-        # mad = rmtools_median_abs_dev(fdf_amp)
-    else:
-        rms = root_mean_square(flagged_fdf_amp)
-        mad = median_abs_dev(flagged_fdf_amp)
-        # mad = rmtools_median_abs_dev(flagged_fdf_amp)
-
-    # signal to noise here
-    snr = max_peak/mad
-
-    return snr
-
-#-==========================================================================
-
-
-
-def call_fitting(args, wavelengths=None, max_depth=500, niters=100, phi_step=1, derotate=True):
-    """
-    Returns
-    -------
-    p0_map
-    PA_map
-    RM_map
-    fp_map
-
-    peak_rm_amp: p0_map
-        Amplitude of the clean peak RM
-    pol_angle: PA_map
-        Polarisation angle at clean peak
-    peak_depth
-        Faraday depth at clean RM peak
-    cleaned_amp
-        Amplitude of cleaned the entire Farady  spectra
-    peak_fpol
-        Fpol at the center freq, or the peak at all freqs
-
-
-    pdata: is the total linearly polarised intensity
-    fpdata: is the fractional polarisation
-    """
-    x, y = args
-
-    snitch.info(f"Processing pixel {x} x {y}")
-    # all freqs single pixel
-    single_pxl_poln = pdata[:, x, y]    
-    ind_nans =  ~np.isnan(abs(single_pxl_poln))
-    single_pxl_poln = single_pxl_poln[ind_nans]
-    wave_sq =  wavelengths[ind_nans]
-
-    # RM-synth and RM-CLEAN on this single pixel. We pass in the complex polarised data
-    phi_range, fcleaned, fdirty, fwhm = rm_synthesis(
-        wave_sq, single_pxl_poln,
-        phi_max=max_depth, phi_step=phi_step, niter=niters, gain=0.1, plot=False, derotate=derotate) 
-    
-    #6
-    snr_clean = peak_snr(fcleaned, fwhm, phi_range)
-    # snr_dirty = peak_snr(fdirty, fwhm, phi_range)
-    # return nans for pixel if snr is less than 10
-    # if snr_clean < 10:
-    #     return [np.nan]*6 + [snr_clean]
-
-    #3 is fcleaned(complex)
-    abs_fclean = np.abs(fcleaned)
 
-    # get the peak index of the clean faraday spectra
-    peak_idx =  np.where(abs_fclean == abs_fclean.max())[0][0]
 
-    # get the depth at which RM is peak. Is this the estimated RM?
-    #2
-    peak_depth = phi_range[peak_idx]
+# def peak_snr(fdf, rmsf_fwhm, phi_range):
+#     """
+#     With individual noise for Q and U because they are not the same
+
+#     1. Get the complex FDF
+#     2. Get its amplitudeqlq
+#     3. get index of at peak amplitude
+#     4. Get peak amplitude
+#     5. mask the THE WIDTH of the FDF peak
+#     6. select all the unmasked, and remaining values of the absolute FDF
+#     7. if fraction of data remaining is less than 30%, ie if more 70pc of the data is flagged:
+#             - MAD
+#             - RMS of the unflagged fdf
+#         otherwise, using the flagged data:
+#             - MAD
+#             - RMS to generate the noise
+
+#         This will give the fdf noise
+#     8. snr is therefore peak fdf to this noise
+#     """
+#     fdf_amp = np.abs(fdf)
+
+#     max_peak = np.max(fdf_amp)
+#     max_peak_loc = np.nanargmax(fdf_amp[1:-1])
+
+#     # find the phi range where the main rmsf peak is located
+#     phi_delta = np.nanmin(np.diff(phi_range))
+
+#     rmsf_fwhm_channel = np.ceil(rmsf_fwhm / phi_delta)
+#     rmsf_width_start = int(max(0, max_peak_loc - rmsf_fwhm_channel * 2))
+#     rmsf_width_end = int(max(0, max_peak_loc + rmsf_fwhm_channel * 2))
+
+#     flagged_fdf_amp = np.copy(fdf_amp)
+#     flagged_fdf_amp[rmsf_width_start:rmsf_width_end] = np.nan
+#     flagged_fdf_amp = np.ma.masked_invalid(flagged_fdf_amp).compressed()
+
+#     if flagged_fdf_amp.size / fdf_amp.size < 0.3:
+#         rms = root_mean_square(fdf_amp)
+#         mad = median_abs_dev(fdf_amp)
+#         # mad = rmtools_median_abs_dev(fdf_amp)
+#     else:
+#         rms = root_mean_square(flagged_fdf_amp)
+#         mad = median_abs_dev(flagged_fdf_amp)
+#         # mad = rmtools_median_abs_dev(flagged_fdf_amp)
+
+#     # signal to noise here
+#     snr = max_peak / mad
+
+#     return snr
+
+
+# -==========================================================================
+
+
+# def call_fitting(
+#     args, wavelengths=None, max_depth=500, niters=100, phi_step=1, derotate=True
+# ):
+#     """
+#     Returns
+#     -------
+#     p0_map
+#     PA_map
+#     RM_map
+#     fp_map
+
+#     peak_rm_amp: p0_map
+#         Amplitude of the clean peak RM
+#     pol_angle: PA_map
+#         Polarisation angle at clean peak
+#     peak_depth
+#         Faraday depth at clean RM peak
+#     cleaned_amp
+#         Amplitude of cleaned the entire Farady  spectra
+#     peak_fpol
+#         Fpol at the center freq, or the peak at all freqs
+
+
+#     pdata: is the total linearly polarised intensity
+#     fpdata: is the fractional polarisation
+#     """
+#     x, y = args
+
+#     snitch.info(f"Processing pixel {x} x {y}")
+#     # all freqs single pixel
+#     single_pxl_poln = pdata[:, x, y]
+#     ind_nans = ~np.isnan(abs(single_pxl_poln))
+#     single_pxl_poln = single_pxl_poln[ind_nans]
+#     wave_sq = wavelengths[ind_nans]
+
+#     # RM-synth and RM-CLEAN on this single pixel. We pass in the complex polarised data
+#     phi_range, fcleaned, fdirty, fwhm = rm_synthesis(
+#         wave_sq,
+#         single_pxl_poln,
+#         phi_max=max_depth,
+#         phi_step=phi_step,
+#         niter=niters,
+#         gain=0.1,
+#         plot=False,
+#         derotate=derotate,
+#     )
+
+#     # 6
+#     snr_clean = peak_snr(fcleaned, fwhm, phi_range)
+#     # snr_dirty = peak_snr(fdirty, fwhm, phi_range)
+#     # return nans for pixel if snr is less than 10
+#     # if snr_clean < 10:
+#     #     return [np.nan]*6 + [snr_clean]
+
+#     # 3 is fcleaned(complex)
+#     abs_fclean = np.abs(fcleaned)
+
+#     # get the peak index of the clean faraday spectra
+#     peak_idx = np.where(abs_fclean == abs_fclean.max())[0][0]
+
+#     # get the depth at which RM is peak. Is this the estimated RM?
+#     # 2
+#     peak_depth = phi_range[peak_idx]
+
+#     # get the peak complex fclean
+#     peak_complex_rm = fcleaned[peak_idx]
+
+#     # this gives the estimated intrinsic fractional polarisation??
+#     # 0
+#     peak_rm_amp = np.abs(peak_complex_rm)
+
+#     # get the polarisation angle at the peak fday spectrum (intrinsic fpol?)
+#     # of that component. Note that this is from the cleaned FDF
+#     # 1
+#     pol_angle = 0.5 * np.arctan2(peak_complex_rm.imag, peak_complex_rm.real)
 
-    # get the peak complex fclean
-    peak_complex_rm = fcleaned[peak_idx]
+#     # Trying to get the frac pol at max polarised intensity for this x,y pixel
+#     # nfp = np.abs(fp_data[:, x, y])
+#     nfp = fp_data[:, x, y]
 
-    #this gives the estimated intrinsic fractional polarisation??
-    #0
-    peak_rm_amp = np.abs(peak_complex_rm)
-
-    # get the polarisation angle at the peak fday spectrum (intrinsic fpol?)
-    # of that component. Note that this is from the cleaned FDF
-    #1
-    pol_angle = 0.5 * np.arctan2(peak_complex_rm.imag, peak_complex_rm.real)
+#     # get location of peak polzn intensity
+#     # 5
+#     peak_lpol = np.abs(single_pxl_poln).max()
+#     # max_pol_idx = np.where(np.abs(single_pxl_poln)==peak_lpol)[0][0]
+#     # snitch.info(f"x: {y}, y:{x}, max polzn intensity @ chan: {max_pol_idx}")
+
+#     # take fpol at the highest frequency
+#     # 4
+#     peak_fpol = nfp[-1]
 
-    # Trying to get the frac pol at max polarised intensity for this x,y pixel
-    # nfp = np.abs(fp_data[:, x, y])
-    nfp = fp_data[:, x, y]
+#     return (
+#         peak_rm_amp,
+#         pol_angle,
+#         peak_depth,
+#         abs(fcleaned),
+#         peak_fpol,
+#         peak_lpol,
+#         snr_clean,
+#     )
 
-    # get location of peak polzn intensity
-    #5
-    peak_lpol = np.abs(single_pxl_poln).max()
-    # max_pol_idx = np.where(np.abs(single_pxl_poln)==peak_lpol)[0][0]  
-    # snitch.info(f"x: {y}, y:{x}, max polzn intensity @ chan: {max_pol_idx}")
 
-    # take fpol at the highest frequency
-    #4
-    peak_fpol = nfp[-1]
-    
-    return peak_rm_amp, pol_angle, peak_depth, abs(fcleaned), peak_fpol, peak_lpol, snr_clean
+# def read_mask(fits):
+#     """get pixel coordinates for a mask"""
+#     maskdata, mhdr = read_data(fits, freq=False)
+#     xpix, ypix = np.where(maskdata > 0)
 
+#     return xpix, ypix
 
-def modify_fits_header(header, ctype='RM', unit='rad/m/m'):
 
-    """
-    Modify header   
-    """
-    hdr = header.copy()
-    new_hdr = {'naxis3': 1, 'cunit3': unit, 
-               'ctype3':ctype,'bunit': unit}
+# def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-map"):
+#     """
+#     Calculate the depolarization ratio
 
-    hdr.update(new_hdr) 
-    return hdr
+#     Parameters
+#     ----------
+#     (i|q|u)data: np.ndarray
+#         Data cubes containing the stokes
+#     e_file: str
+#         Name of the file containing errors. This is found in the file generated
+#         from scrappy's 'sc-los' tool and is a numpy pickle file.
+#     mask: str
+#         Name of mask to use while calculating depolarisation ratio
+#     output: str
+#         Name of output depolarisation ratio map
 
+#     Returns
+#     -------
+#     Maps of depolarization ratio and its error
 
-def read_mask(fits):
+#     """
 
-    """get pixel coordinates for a mask"""
-    maskdata, mhdr = read_data(fits, freq=False)
-    xpix, ypix = np.where(maskdata > 0)
+#     def depolzn_err(fp_lo, fer_lo, fp_hi, fer_hi):
+#         return np.sqrt(np.square(fer_lo / fp_lo) + np.square(fer_hi / fp_hi))
 
-    return xpix, ypix
+#     def read_npz(fname):
+#         return dict(np.load(fname))
 
+#     ihdr = fits.getheader(idata)
+#     idata = fits.getdata(idata).squeeze()
+#     qdata = fits.getdata(qdata).squeeze()
+#     udata = fits.getdata(udata).squeeze()
 
-def clean_header(hdr):
-    print("Clean header")   
-    
-    naxis = hdr["NAXIS"]
-    if "HISTORY" in hdr:
-        del hdr["HISTORY"]
+#     sel = [0, -1]
 
-    # remove extra acces
-    if naxis > 2:
-        for _ in range(1, (naxis-2)+1):
-            for kw in ("CTYPE", "CRVAL", "CRPIX", "CDELT", "CUNIT"):
-                if f"{kw}{2+_}"in hdr:
-                    hdr.remove(f"{kw}{2+_}")
+#     npz = read_npz(e_file)
+#     ierr, qerr, uerr = npz["I_err"][sel], npz["Q_err"][sel], npz["U_err"][sel]
 
-    hdr_orig = hdr.copy()
-    for key, value in hdr_orig.items():
-        if "BPA" in key or "BMAJ" in key or "BMIN" in key:
-            hdr.remove(key)
-    
-    return hdr
+#     idata, qdata, udata = idata[sel], qdata[sel], udata[sel]
 
+#     if mask:
+#         mask = fits.getdata(mask).squeeze()
+#         idata = np.ma.masked_equal(idata * mask, 0).filled()
+#         qdata = np.ma.masked_equal(qdata * mask, 0).filled()
+#         udata = np.ma.masked_equal(udata * mask, 0).filled()
 
+#     fpol = frac_polzn(idata, qdata, udata)
 
-def depolarisation_ratio(idata, qdata, udata, e_file, mask=None, output="depol-map"):
-    """
-    Calculate the depolarization ratio
+#     fperr_lo = frac_polzn_error(
+#         idata[0], qdata[0], udata[0], ierr[0], qerr[0], uerr[0]
+#     )
+#     fperr_hi = frac_polzn_error(
+#         idata[-1], qdata[-1], udata[-1], ierr[-1], qerr[-1], uerr[-1]
+#     )
 
-    Parameters
-    ----------
-    (i|q|u)data: np.ndarray
-        Data cubes containing the stokes
-    e_file: str
-        Name of the file containing errors. This is found in the file generated
-        from scrappy's 'sc-los' tool and is a numpy pickle file.
-    mask: str
-        Name of mask to use while calculating depolarisation ratio
-    output: str
-        Name of output depolarisation ratio map        
-
-    Returns
-    -------
-    Maps of depolarization ratio and its error
-
-    """
-    
-    def depolzn_err(fp_lo, fer_lo, fp_hi, fer_hi):
-        return np.sqrt(np.square(fer_lo/fp_lo) + np.square(fer_hi/fp_hi))
-
-    def read_npz(fname):
-        return dict(np.load(fname))
-
-    ihdr = fits.getheader(idata)
-    idata = fits.getdata(idata).squeeze()
-    qdata = fits.getdata(qdata).squeeze()
-    udata = fits.getdata(udata).squeeze()
-
-    sel = [0,-1]
-
-    npz = read_npz(e_file)
-    ierr, qerr, uerr = npz["I_err"][sel], npz["Q_err"][sel], npz["U_err"][sel]
-
-    idata, qdata, udata = idata[sel], qdata[sel], udata[sel]
-
-    if mask:
-        mask = fits.getdata(mask).squeeze()
-        idata = np.ma.masked_equal(idata*mask, 0).filled()
-        qdata = np.ma.masked_equal(qdata*mask, 0).filled()
-        udata = np.ma.masked_equal(udata*mask, 0).filled()
-        
-    fpol = frac_polzn(idata, qdata, udata)
+#     fp_lo, fp_hi = fpol[0], fpol[-1]
 
-    
-
-    fperr_lo = frac_polzn_error(idata[0], qdata[0], udata[0], ierr[0], qerr[0], uerr[0])
-    fperr_hi = frac_polzn_error(idata[-1], qdata[-1], udata[-1], ierr[-1], qerr[-1], uerr[-1])
-
-
-    fp_lo, fp_hi = fpol[0], fpol[-1]    
+#     depoln = fp_lo / fp_hi
+#     depoln_err = depolzn_err(fp_lo, fperr_lo, fp_hi, fperr_hi)
+#     depoln_err_ratio = depoln_err / depoln
 
-    depoln = fp_lo / fp_hi
-    depoln_err = depolzn_err(fp_lo, fperr_lo, fp_hi, fperr_hi)
-    depoln_err_ratio = depoln_err/depoln
+#     depol_hdr = modify_fits_header(ihdr, ctype="depol", unit="unit")
 
-
-    depol_hdr = modify_fits_header(ihdr, ctype='depol', unit='unit')
+#     # depolarization
+#     fits.writeto(output + ".fits", depoln, depol_hdr, overwrite=True)
 
-    #depolarization
-    fits.writeto(output+".fits", depoln, depol_hdr,
-        overwrite=True)
+#     # depolarization
+#     fits.writeto(output + "-err.fits", depoln_err, depol_hdr, overwrite=True)
 
-    #depolarization
-    fits.writeto(output+"-err.fits", depoln_err, depol_hdr,
-        overwrite=True)
+#     fits.writeto(
+#         output + "-err-ratio.fits", depoln_err_ratio, depol_hdr, overwrite=True
+#     )
 
-    fits.writeto(output+"-err-ratio.fits", depoln_err_ratio, depol_hdr,
-        overwrite=True)
+#     # write out fpol error at the highest freq (shortest wavelength)
+#     fperr_hdr = modify_fits_header(ihdr, ctype="fpol_err", unit="unit")
+#     fits.writeto(output + "-fpol-err.fits", fperr_hi, fperr_hdr, overwrite=True)
+
+#     snitch.info("Depolarization maps ready")
+#     return
 
-    # write out fpol error at the highest freq (shortest wavelength)
-    fperr_hdr = modify_fits_header(ihdr, ctype='fpol_err', unit='unit')
-    fits.writeto(output+"-fpol-err.fits", fperr_hi, fperr_hdr,
-        overwrite=True)
+
+# def depol_shim():
+#     snitch.info("Generating depolarization maps")
+#     snitch.info(f"Running: depolarisation_ratio({', '.join(sys.argv[1:])})")
+#     depolarisation_ratio(*sys.argv[1:])
+#     return
+
+
+def test_orig_rm(lam2, pdata, pixel: tuple):
+    phi_range = np.arange(-200, 200 + 1)
+    one_pix = pdata[:, *pixel]
+
+    fspec_dirty = faraday_to_lambda(lam2, phi_range, one_pix)
+
+    fspec_clean, components, fwhm = rm_clean(
+        lam2, phi_range, fspec_dirty, niter=500, gain=0.1, derotate=True
+    )
+    return fspec_dirty, fspec_clean, components, fwhm
+
+
+def main(opts):
+    global GET_FRAC_POL, OUTDIR
+
+    OUTDIR = opts.outdir
+
+    OUTDIR.mkdir(parents=True, exist_ok=True)
+
+    # if opts.snr:
+    #     snr = opts.snr
+
+    phi_range = np.arange(-opts.max_depth, opts.max_depth + 1, opts.depth_step)
+
+    freqs = np.loadtxt(opts.freqs)
+    waves = SPEED_OF_LIGHT / freqs
+    wave_sq = waves**2
+
+    qcube = AstroImage(opts.qcube)
+    ucube = AstroImage(opts.ucube)
+    qcube.frequency = freqs
+    qcube.wavelength = waves
+    ucube.frequency = freqs
+    ucube.wavelength = waves
+
+    if opts.icube:
+        GET_FRAC_POL = True
+        icube = AstroImage(opts.icube, chunked=False)
+        icube.frequency = freqs
+        icube.wavelength = waves
+
+    if opts.mask:
+        mask = AstroImage(opts.mask)
+        mask.data = np.broadcast_to(~mask.data.astype(bool), qcube.data.shape)
+        # qcube.data = np.ma.array(data=qcube.data, mask=mask.data, fill_value=0)
+
+    clean_hdr = qcube.get_clean_2d_header()
+
+    chunks = 5
+    if GET_FRAC_POL:
+        fpol_data = frac_polzn(icube.data, qcube.data, ucube.data)[
+            :, :chunks, :chunks
+        ]
+
+    # lpol_data = linear_polzn(qcube.data, ucube.data)[:, :chunks, :chunks]
+
+    # Debuggging
+    # for testing
+    pixels = list(product(range(chunks), repeat=2))
+    dirties = []
+    cleans = []
+
+    for pixel in pixels:
+        print(f"processing pixel for original algorithm: {pixel}")
+        fspec_dirty, fspec_clean, components, fwhm = test_orig_rm(
+            wave_sq, fpol_data, pixel
+        )
+        dirties.append(fspec_dirty)
+        cleans.append(fspec_clean)
+
+    fdirty = RMSynthesis.rm_synthesis(wave_sq, phi_range, fpol_data)
+
+    fclean, components, fwhm = RMSynthesis.rm_clean(
+        wave_sq, phi_range, fdirty, niter=500, gain=0.1, derotate=True, threshold=0
+    )
+
+    for _i, pixel in enumerate(pixels):
+        print(f"Plotting pixel for original algorithm: {pixel}")
+        debug_diagnostic_plots(
+            dirties[_i],
+            fdirty[:, *pixel],
+            xaxis=phi_range,
+            fname=f"fdirty-orig-vs-new-algo-{pixel[0], pixel[1]}",
+        )
+        debug_diagnostic_plots(
+            cleans[_i],
+            fclean[:, *pixel],
+            xaxis=phi_range,
+            fname=f"fclean-orig-vs-new-algo-px-{pixel[0], pixel[1]}",
+        )
+
+    print("----")
+    # call_fitting(_v, wavelengths=wavelengths,
+    #             max_depth=args.max_depth,
+    #                 niters=args.niters, phi_step=args.depth_step,
+    #                 derotate=args.no_derotate)
+
+    # 0. Mask the data
+    # 1. Get the fractional polarization
+    # 2. Get the linear polarization
+    # 3. Generate the:
+    #    - RM map
+    #    - p0 map
+    #    - pA map
+    #    - SNR map
+
+    # create the new files
+    new_fits_files = {
+        ("p", "inherent-fractional-pol"): {
+            "CTYPE3": "p",
+            "CUNIT3": "ratio",
+            "comment": "p0 at the peak of FDF",
+        },
+        ("pa", "pol-angle"): {
+            "CTYPE3": "PA",
+            "CUNIT3": "radians",
+            "comment": "Polarization angle at the of peak FDF",
+        },
+        ("rm", "rotation-measure"): {
+            "CTYPE3": "RM",
+            "CUNIT3": "rad/m^2",
+            "comment": "Faraday depth at the peak of FDF",
+        },
+        ("fpol", "fractional-pol"): {
+            "CTYPE3": "FPOL",
+            "CUNIT3": "x100%",
+            "comment": "Fractional polarization at the central frequency",
+        },
+        ("lpol", "linear-pol"): {
+            "CTYPE3": "LPOL",
+            "CUNIT3": "unit",
+            "comment": "Linear polarization at the central frequency",
+        },
+        ("snr", "signal-to-noise"): {
+            "CTYPE3": "SNR",
+            "CUNIT3": "unit",
+            "comment": "Signal to noise at peak",
+        },
+    }
+
+    ofiles = {}
+    for (ctype, fname), hkeys in new_fits_files.items():
+        _oname = OUTDIR.joinpath(f"{fname}-{ctype}").with_suffix(".fits")
+        # hkeys = hkeys.update({"CUNIT3": hkeys["unit"]})
+        clean_hdr.update(hkeys)
+        ofiles[fname] = make_new_2d_fits(_oname, clean_hdr)
+
+    print("Testing iteratives")
 
-    
-    snitch.info("Depolarization maps ready")
-    return
-
-def depol_shim():
-    snitch.info("Generating depolarization maps")
-    snitch.info(f"Running: depolarisation_ratio({', '.join(sys.argv[1:])})")
-    depolarisation_ratio(*sys.argv[1:])
-    return
-
-    
-    
-def arg_parser():
-    parser = argparse.ArgumentParser(description='Performs linear ' 
-             'least squares fitting to Q and U image.')
-
-    add = parser.add_argument
-    add('-q', '--qcube', dest='qfits', help='Stokes Q cube (fits)', type=str)
-    add('-u', '--ucube', dest='ufits', help='Stokes U cube (fits)', type=str)
-    add('-i', '--icube', dest='ifits', help='Stokes I cube (fits)', type=str)
-    add('-f', '--freq', dest='freq', help='Frequency file (text)', type=str)  
-
-    add('-ncore', '--ncore', dest='numProcessor',
-        help='number of cores to use. Default 60.', default=20, type=int)
-    add('-mask', '--maskfits', dest='maskfits',
-        help='A mask image (fits)', default=None, type=str)
-    add('-o', '--prefix', dest='prefix', help='This is a prefix for output files.', type=str)
-    add("-niters", "--niters", dest="niters",
-        help="Number of clean iterations. Default 1000", default=1000, type=int)
-    add("-md", "--max-depth", dest="max_depth",
-        help="Maximum Farady depth to fit for. Default 200", default=200, type=int)
-    add("--depth-step", dest="depth_step",
-        help="Depth stepping. Default 1", default=1, type=int)
-    add('-debug', '--debug', dest='debug', action="store_true",
-        help='Enable debug mode, disable parallel processing') 
-    add('-snr', '--snr-threshold', dest='snr', type=float, default=10,
-        help='Threshold to mask out data. Default is 10')
-    add("-nd", "--no-derotate", dest="no_derotate", action="store_false",
-        help="Use this switch to NOT derotate the RMTF by the mean lambda squared.")
-   
-    return parser.parse_args()
-
-
-def main():
-    args = arg_parser()
-
-    # prevent loading on console help
-    import_heavy_modules()
-
-    # making these global because of multiprocess non-sharing.
-    # Global variables can not be modified and shared between different processes
-    global pdata, fp_data, snr
-      
-    validate_required_input_files(args)
-    frequencies = read_freq_file(args.freq)
-    output_files = prep_output_files(args.qfits, args.prefix)
-
-
-    snr = args.snr
- 
-
-    wavelengths =  (299792458.0/frequencies)**2 
-    qdata, qhdr = read_data(args.qfits) # run Q-cube 
-    udata, _ = read_data(args.ufits) # run U-cube
-
-    if args.ifits:
-        idata, ihdr = read_data(args.ifits) # run I-cube
-
-        # divide everything by I to reduce variations**
-        fp_data = frac_polzn(idata, qdata, udata)
-
-        pdata = linear_polzn(qdata, udata)
-    else:
-        pdata = linear_polzn(qdata, udata)
-    
-
-    # now save the fits
-    # clean the header a little
-    qhdr = clean_header(qhdr)
-
-    # intrisic fractional polarisation
-    p0_hdr = modify_fits_header(qhdr, ctype='p', unit='ratio')
-
-    #polarisation angle
-    PA_hdr = modify_fits_header(qhdr, ctype='PA', unit='radians')
-
-    # RM - depth at the peak faraday spectrum
-    RM_hdr = modify_fits_header(qhdr, ctype='RM', unit='rad/m^2')
-
-    # polarised flux
-    pf_hdr = modify_fits_header(qhdr, ctype='FPOL', unit='x100%')
-
-    # polarise intensity
-    lp_hdr = modify_fits_header(qhdr, ctype='LPOL', unit='unit')
-
-    snr_hdr = modify_fits_header(qhdr, ctype='SNR', unit='unit')
-     
-    N1, N2, N3 = qdata.shape
-    p0_map = np.zeros([N2, N3])
-    PA_map = np.zeros([N2, N3])
-    RM_map = np.zeros([N2, N3])
-    fp_map = np.zeros([N2, N3])
-    lp_map = np.zeros([N2, N3])
-    snr_clean = np.zeros([N2, N3])
-    depol_map = np.zeros([N2, N3])
-    depol_err = np.zeros([N2, N3])
-
-
-    if args.maskfits:
-        x, y = read_mask(args.maskfits)
-    else:
-        x, y = np.indices((N2, N3))
-        x = x.flatten()
-        y = y.flatten()
-
-
-    xy = list(zip(x, y))
-
-    results = []
-
-    if not args.debug:
-        with futures.ProcessPoolExecutor(args.numProcessor) as executor:
-            results = executor.map(
-                partial(
-                    call_fitting,wavelengths=wavelengths, max_depth=args.max_depth,
-                    niters=args.niters, phi_step=args.depth_step, derotate=args.no_derotate), 
-                xy)
-    else:
-        # test bedding
-        for _v in xy:
-            results.append(call_fitting(_v, wavelengths=wavelengths,
-                max_depth=args.max_depth,
-                    niters=args.niters, phi_step=args.depth_step,
-                    derotate=args.no_derotate))
-
-    
-    results = list(results)
-    for _, an in enumerate(xy):        
-        # # making new pixels with the new the poln angle and the
-        p0_map[an] = results[_][0]
-        PA_map[an] = results[_][1]
-        RM_map[an] = results[_][2]
-        fp_map[an] = results[_][4]
-        lp_map[an] = results[_][5]
-        snr_clean[an] = results[_][6]
-    
-
-    # Amplitude of the clean peak RM (intrinsic fpol)
-    fits.writeto(
-        args.prefix + '-p0-peak-FDF.fits', p0_map, p0_hdr, overwrite=True)
-
-    # pol angle at peak RM (polarisation angle)
-    fits.writeto(
-        args.prefix + '-PA-pangle-at-peak-rm.fits', PA_map, PA_hdr,
-        overwrite=True)
-
-    # Depth at peak RM (Actual RM at the peak intrisic fpol)
-    fits.writeto(
-        args.prefix + '-RM-depth-at-peak-rm.fits', RM_map, RM_hdr,
-        overwrite=True)
-
-    #frac pol at central freq
-    fits.writeto(
-        args.prefix + '-FPOL-at-max-lpol.fits', fp_map, pf_hdr,
-        overwrite=True)
-    
-     #frac pol at central freq
-    fits.writeto(
-        args.prefix + '-max-LPOL.fits', lp_map, lp_hdr,
-        overwrite=True)
-
-    #SNR from the FDF
-    fits.writeto(
-        args.prefix + '-clean-fdf-SNR.fits', snr_clean, snr_hdr,
-        overwrite=True)
-
-
-    
-    
-    # depol, depol_err = depolarisation_ratio(idata, qdata, udata, e_file)
-    # depol_hdr = modify_fits_header(qhdr, ctype='depol', unit='unit')
-
-    # #depolarization
-    # fits.writeto(
-    #     args.prefix + '-depolarization.fits', depol, depol_hdr,
-    #     overwrite=True)
-
-    # #depolarization
-    # fits.writeto(
-    #     args.prefix + '-depolarization-err.fits', depol_err, depol_hdr,
-    #     overwrite=True)
-
-
-    snitch.info("Donesies!")
-    return
-    
-    
 
 def console():
     """A console run entry point for setup.cfg"""
     main()
-    snitch.info("Bye :D !")
+    # main2()
+    snitch.info("---- Done. Bye :D ! ----")
 
 
-if __name__=='__main__':
+if __name__ == "__main__":
     console()
-
 
     """
     Running
-    
+
     time python pica_rm-x2.py -q Q-image-cubes.fits -u U-image-cubes.fits \
         -i I-image-cubes.fits -ncore 120 -o turbo \
         -f Frequencies-PicA-Masked.txt -mask true_mask_572.fits
@@ -802,4 +773,3 @@ if __name__=='__main__':
         -f Frequencies-PicA-Masked.txt -mask from_rick/masks/ricks-data-mask.fits
 
     """
-    
